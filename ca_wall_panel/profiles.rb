@@ -1,8 +1,8 @@
 # ----------------------------------------------------------------
-#  Arkopa Lambri — Profile Database
+#  CA-Wall Panel — Profile Database
 # ----------------------------------------------------------------
 #  Her profil bir hash ile tanımlanır:
-#    :code      → Arkopa ürün kodu (örn. "18126-46")
+#    :code      → ürün kodu (örn. "18126-46")
 #    :width_mm  → genişlik (kesitin yüzeye paralel boyutu)
 #    :depth_mm  → derinlik (duvardan dışa çıkan boyut, kalınlık)
 #    :length_mm → standart boy (referans, follow-me uzunluğunu çizgi belirler)
@@ -18,7 +18,7 @@
 # ----------------------------------------------------------------
 
 module CAWorks
-  module ArkopaLambri
+  module CAWallPanel
     module Profiles
 
       # ------------------------------------------------------------
@@ -183,54 +183,35 @@ module CAWorks
       def self.ribbed_points(w, d, p)
         n  = p[:rib_count] || 8
         rd = (p[:rib_depth] || 3.0).mm
-        # n yiv = n+1 tepe, eşit aralıklı
         seg = w / n.to_f
         pts = []
         pts << Geom::Point3d.new(0, 0, 0)
         pts << Geom::Point3d.new(w, 0, 0)
         pts << Geom::Point3d.new(w, d, 0)
-        # Sağdan sola yiv tepeleri ekleniyor
         (1...n).each do |i|
           x = w - i * seg
-          pts << Geom::Point3d.new(x + seg / 2.0, d, 0) # tepe sağ
-          pts << Geom::Point3d.new(x, d - rd, 0)        # vadi
+          pts << Geom::Point3d.new(x + seg / 2.0, d, 0)
+          pts << Geom::Point3d.new(x, d - rd, 0)
         end
         pts << Geom::Point3d.new(seg / 2.0, d, 0)
         pts << Geom::Point3d.new(0, d, 0)
         pts
       end
 
-      # Yarım yuvarlak (kabarık) — yay yaklaşıklaması
+      # Yarım yuvarlak (kabarık)
       def self.half_round_points(w, d, p)
         r  = (p[:radius] || 6.0).mm
-        cx = w / 2.0
         seg = 16
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
-        # Yarım daire: cx merkezli, kabarıklık tepe d+r — ama tepe d olması için
-        # merkezi (cx, d - r/2) alıp kabarıklığı r ile sınırlıyoruz.
-        # Pratik: kabarıklığın tepesi y = d + r/2 olsun.
-        seg.times do |i|
-          ang = Math::PI - i * (Math::PI / seg)
-          x = cx + r * Math.cos(ang) * (w / (2.0 * r)) * 0.5 # yatay sığdırma
-          # Daha basit: tam yarım yuvarlak r yarıçaplı, w'ye sığacaksa scale.
-          # Sade tutmak için skip: aşağıdaki blok kullanılır.
-        end
-        # Sade ve doğru yaklaşım: w üzerinde yarım yumru
         pts = [
           Geom::Point3d.new(0, 0, 0),
           Geom::Point3d.new(w, 0, 0),
           Geom::Point3d.new(w, d, 0)
         ]
-        # tepeden sola yay
         seg.times do |i|
-          t = i / seg.to_f # 0..1
-          ang = t * Math::PI # 0..pi
-          # x: w'den 0'a, y: d'den d+r'ye yay (yarım sinüs gibi)
-          x  = w / 2.0 + (w / 2.0) * Math.cos(ang)
-          y  = d + r * Math.sin(ang)
+          t   = i / seg.to_f
+          ang = t * Math::PI
+          x   = w / 2.0 + (w / 2.0) * Math.cos(ang)
+          y   = d + r * Math.sin(ang)
           pts << Geom::Point3d.new(x, y, 0)
         end
         pts << Geom::Point3d.new(0, d, 0)
@@ -242,25 +223,21 @@ module CAWorks
         sc = p[:step_count] || 2
         sd = (p[:step_depth] || 6.0).mm
         cx = w / 2.0
-        # Toplam genişliğin %60'ını kademeler için kullan
         step_total = w * 0.5
         sw = step_total / sc.to_f
         pts = []
         pts << Geom::Point3d.new(0, 0, 0)
         pts << Geom::Point3d.new(w, 0, 0)
         pts << Geom::Point3d.new(w, d, 0)
-        # sağdan içe doğru kademeler
         sc.times do |i|
           x_outer = cx + step_total / 2.0 - i * sw
           y       = d - i * sd
           pts << Geom::Point3d.new(x_outer, y, 0)
           pts << Geom::Point3d.new(x_outer - sw, y, 0)
         end
-        # en derin taban
         deepest_y = d - sc * sd
         pts << Geom::Point3d.new(cx + step_total / 2.0 - sc * sw, deepest_y, 0)
         pts << Geom::Point3d.new(cx - step_total / 2.0 + sc * sw, deepest_y, 0)
-        # soldan dışarı kademeler
         sc.downto(1) do |i|
           x_inner = cx - step_total / 2.0 + (i - 1) * sw
           y       = d - (i - 1) * sd
@@ -277,16 +254,13 @@ module CAWorks
         rr = (p[:rib_radius] || 4.0).mm
         seg_per_rib = 8
         rib_w = w / n.to_f
-        # Her yarım daire çubuk yarıçapı min(rib_w/2, rr)
         actual_r = [rib_w / 2.0, rr].min
         pts = []
         pts << Geom::Point3d.new(0, 0, 0)
         pts << Geom::Point3d.new(w, 0, 0)
         pts << Geom::Point3d.new(w, d, 0)
-        # sağdan sola her bir reed
         (n - 1).downto(0) do |i|
           cx = (i + 0.5) * rib_w
-          # yay: 0..pi (sağ taraftan başla)
           seg_per_rib.times do |k|
             t   = k / seg_per_rib.to_f
             ang = t * Math::PI

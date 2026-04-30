@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------
-#  Arkopa Lambri — Main Entry
+#  CA-Wall Panel — Main Entry
 # ----------------------------------------------------------------
 
 require 'json'
@@ -11,7 +11,7 @@ require File.join(File.dirname(__FILE__), 'colorize_tool')
 require File.join(File.dirname(__FILE__), 'updater')
 
 module CAWorks
-  module ArkopaLambri
+  module CAWallPanel
 
     @profile_dialog = nil
     @color_dialog   = nil
@@ -35,8 +35,8 @@ module CAWorks
       html_path = File.join(File.dirname(__FILE__), 'dialog.html')
 
       @profile_dialog = UI::HtmlDialog.new(
-        dialog_title:   'Arkopa Lambri',
-        preferences_key: 'caworks_arkopa_lambri',
+        dialog_title:   'CA-Wall Panel',
+        preferences_key: 'caworks_ca_wall_panel',
         scrollable:     true,
         resizable:      true,
         width:          440,
@@ -47,7 +47,6 @@ module CAWorks
       )
       @profile_dialog.set_file(html_path)
 
-      # JS → Ruby köprüleri
       @profile_dialog.add_action_callback('dialog_ready') do |_ctx|
         json = Profiles.all.to_json
         @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
@@ -82,8 +81,8 @@ module CAWorks
       html_path = File.join(File.dirname(__FILE__), 'colors.html')
 
       @color_dialog = UI::HtmlDialog.new(
-        dialog_title:   'Arkopa Renkler',
-        preferences_key: 'caworks_arkopa_colors',
+        dialog_title:   'CA-Wall Panel Renkler',
+        preferences_key: 'caworks_ca_wall_panel_colors',
         scrollable:     true,
         resizable:      true,
         width:          340,
@@ -114,31 +113,31 @@ module CAWorks
     #  MENÜ + TOOLBAR
     # ------------------------------------------------------------
     unless file_loaded?(__FILE__)
-      menu = UI.menu('Plugins').add_submenu('Arkopa Lambri')
+      menu = UI.menu('Plugins').add_submenu('CA-Wall Panel')
       menu.add_item('Profil Seç ve Uygula') { show_profile_dialog }
       menu.add_item('Renklendir')           { show_color_dialog   }
       menu.add_separator
-      menu.add_item('Güncelle Plugini')              { Updater.update_now! }
+      menu.add_item('Güncelle Plugini')     { Updater.update_now! }
       menu.add_item('Hakkında') do
         UI.messagebox(
-          "Arkopa Lambri v#{PLUGIN_VERSION}\n\n" \
+          "CA-Wall Panel v#{PLUGIN_VERSION}\n\n" \
           "ca//works · Cihan Aydoğdu Mimarlık\n\n" \
           "Kullanım:\n" \
           "1) 'Profil Seç ve Uygula' menüsünden bir profil seçin.\n" \
           "2) SketchUp'ta uygulamak istediğiniz çizgi/yay/daire/curve'ü seçin.\n" \
           "3) Diyalogdan 'Uygula' butonuna basın.\n" \
-          "4) Renklendirmek için lambri grubunu seçip 'Renklendir' menüsünü açın."
+          "4) Renklendirmek için panel grubunu seçip 'Renklendir' menüsünü açın."
         )
       end
 
-      tb = UI::Toolbar.new('Arkopa Lambri')
+      tb = UI::Toolbar.new('CA-Wall Panel')
 
       icon_dir = File.join(File.dirname(__FILE__), 'icons')
 
-      cmd1 = UI::Command.new('Arkopa Lambri') { show_profile_dialog }
-      cmd1.tooltip   = 'Arkopa Lambri — Profil seç ve uygula'
-      cmd1.status_bar_text = 'Bir çizgi/yay/daire seçip Arkopa profilini uygulayın'
-      icon1 = File.join(icon_dir, 'lambri.svg')
+      cmd1 = UI::Command.new('CA-Wall Panel') { show_profile_dialog }
+      cmd1.tooltip          = 'CA-Wall Panel — Profil seç ve uygula'
+      cmd1.status_bar_text  = 'Bir çizgi/yay/daire seçip duvar paneli profilini uygulayın'
+      icon1 = File.join(icon_dir, 'panel.svg')
       if File.exist?(icon1)
         cmd1.large_icon = icon1
         cmd1.small_icon = icon1
@@ -146,8 +145,8 @@ module CAWorks
       tb.add_item(cmd1)
 
       cmd2 = UI::Command.new('Renklendir') { show_color_dialog }
-      cmd2.tooltip   = 'Yerleştirilmiş Arkopa lambri grubunu renklendir'
-      cmd2.status_bar_text = 'Lambri grubunu seçip rengini değiştirin'
+      cmd2.tooltip         = 'Yerleştirilmiş CA-Wall Panel grubunu renklendir'
+      cmd2.status_bar_text = 'Panel grubunu seçip rengini değiştirin'
       icon2 = File.join(icon_dir, 'color.svg')
       if File.exist?(icon2)
         cmd2.large_icon = icon2
@@ -156,7 +155,7 @@ module CAWorks
       tb.add_item(cmd2)
 
       cmd3 = UI::Command.new('Güncelle Plugini') { Updater.update_now! }
-      cmd3.tooltip          = 'Arkopa Lambri — Güncelle (yeniden başlatmadan)'
+      cmd3.tooltip          = 'CA-Wall Panel — Güncelle (yeniden başlatmadan)'
       cmd3.status_bar_text  = 'Yeni sürüm varsa anında indirir ve yükler'
       icon3 = File.join(icon_dir, 'update.svg')
       if File.exist?(icon3)
@@ -167,7 +166,6 @@ module CAWorks
 
       tb.show
 
-      # Açılışta updater'ı başlat (sessiz)
       Updater.boot
 
       file_loaded(__FILE__)

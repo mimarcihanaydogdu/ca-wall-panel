@@ -22,31 +22,31 @@ jobs:
 
       - name: Verify plugin version matches tag
         run: |
-          PLUGIN_VERSION=$(grep -oP "PLUGIN_VERSION\s*=\s*'\K[^']+" arkopa_lambri.rb)
+          PLUGIN_VERSION=$(grep -oP "PLUGIN_VERSION\s*=\s*'\K[^']+" ca_wall_panel.rb)
           if [ "$PLUGIN_VERSION" != "${{ steps.version.outputs.VERSION }}" ]; then
-            echo "::error::Tag (${{ steps.version.outputs.VERSION }}) ile arkopa_lambri.rb içindeki PLUGIN_VERSION ($PLUGIN_VERSION) uyuşmuyor."
+            echo "::error::Tag (${{ steps.version.outputs.VERSION }}) ile ca_wall_panel.rb içindeki PLUGIN_VERSION ($PLUGIN_VERSION) uyuşmuyor."
             exit 1
           fi
 
       - name: Build .rbz package
         run: |
-          zip -r arkopa_lambri.rbz \
-            arkopa_lambri.rb \
-            arkopa_lambri/ \
+          zip -r ca_wall_panel.rbz \
+            ca_wall_panel.rb \
+            ca_wall_panel/ \
             -x "*.DS_Store" "*.git*"
-          ls -la arkopa_lambri.rbz
+          ls -la ca_wall_panel.rbz
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Arkopa Lambri v${{ steps.version.outputs.VERSION }}
+          name: CA-Wall Panel v${{ steps.version.outputs.VERSION }}
           body: |
-            **Yükleme:** SketchUp → Window → Extension Manager → Install Extension → `arkopa_lambri.rbz`
+            **Yükleme:** SketchUp → Window → Extension Manager → Install Extension → `ca_wall_panel.rbz`
 
             Otomatik güncelleme açıksa zaten yeni sürüm bir sonraki açılışta inecek.
 
             ### Değişiklikler
             <!-- Buraya release notlarını yaz; bu metin updater tarafından gösterilir -->
-          files: arkopa_lambri.rbz
+          files: ca_wall_panel.rbz
           draft: false
           prerelease: false

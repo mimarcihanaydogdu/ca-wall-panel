@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------
-#  Arkopa Lambri — Apply Tool
+#  CA-Wall Panel — Apply Tool
 #  Kullanıcı bir veya daha fazla bağlantılı edge (line/arc/circle/curve)
 #  seçer; aktif profile göre kesit yüzü, ilk edge'in başlangıç noktasına
 #  ve tanjantına göre dik düzlemde oluşturulur; follow-me ile path
@@ -7,12 +7,13 @@
 # ----------------------------------------------------------------
 
 module CAWorks
-  module ArkopaLambri
+  module CAWallPanel
     module ApplyTool
 
-      # Modül-değişkenleri (UI'dan ayarlanır)
+      ATTR_DICT = 'caworks_ca_wall_panel'.freeze
+
       @active_profile_code = '18126-46'
-      @flip_orientation    = false  # kesit dış yöne mi iç yöne mi baksın
+      @flip_orientation    = false
 
       class << self
         attr_accessor :active_profile_code, :flip_orientation
@@ -38,7 +39,6 @@ module CAWorks
           return
         end
 
-        # Seçimi sıralı/yönlü bir path'e dönüştür
         ordered = order_edges(sel)
         if ordered.nil? || ordered.empty?
           UI.messagebox("Seçili edge'ler birbirine bağlı tek bir path "\
@@ -46,7 +46,6 @@ module CAWorks
           return
         end
 
-        # Tüm edge'lerin aynı parent içinde olduğundan emin ol
         parent_entities = ordered.first.parent.entities
         unless ordered.all? { |e| e.parent.entities == parent_entities }
           UI.messagebox("Seçili edge'ler farklı bağlamlarda (grup/component) "\
@@ -54,9 +53,9 @@ module CAWorks
           return
         end
 
-        model.start_operation('Arkopa Lambri Uygula', true)
+        model.start_operation('CA-Wall Panel Uygula', true)
         begin
-          group = build_lambri(model, parent_entities, ordered, profile)
+          group = build_panel(model, parent_entities, ordered, profile)
           if group
             model.selection.clear
             model.selection.add(group)
@@ -77,17 +76,14 @@ module CAWorks
         return [] if edges.empty?
         return edges if edges.size == 1
 
-        # Komşuluk grafiğini kur (uç noktaları string key olarak)
         adjacency = Hash.new { |h, k| h[k] = [] }
         edges.each do |e|
           adjacency[pt_key(e.start.position)] << e
           adjacency[pt_key(e.end.position)]   << e
         end
 
-        # Uç (degree 1) bul — açık path için
         endpoint_keys = adjacency.select { |_, es| es.size == 1 }.keys
 
-        # Açık path
         if endpoint_keys.any?
           ordered = []
           visited = {}
@@ -105,7 +101,6 @@ module CAWorks
           return ordered.size == edges.size ? ordered : nil
         end
 
-        # Kapalı path (daire/closed curve) — herhangi bir edge'den başla
         ordered = []
         visited = {}
         edge    = edges.first
@@ -125,7 +120,6 @@ module CAWorks
         ordered.size == edges.size ? ordered : nil
       end
 
-      # Nokta hash'lemek için tolerans-li string key
       def self.pt_key(pt, tol = 1.0e-3)
         format('%.4f,%.4f,%.4f', (pt.x / tol).round * tol,
                                   (pt.y / tol).round * tol,
@@ -135,8 +129,7 @@ module CAWorks
       # ------------------------------------------------------------
       #  ANA İNŞA — kesit yüzünü kur, follow-me uygula
       # ------------------------------------------------------------
-      def self.build_lambri(model, entities, ordered_edges, profile)
-        # Path yönünü doğru belirle
+      def self.build_panel(model, entities, ordered_edges, profile)
         start_pt, next_pt = determine_path_direction(ordered_edges)
 
         tangent = next_pt - start_pt
@@ -146,13 +139,9 @@ module CAWorks
         end
         tangent.normalize!
 
-        # Yukarı (Z) referansı — kesit "yüzey" yönü için.
         z = Geom::Vector3d.new(0, 0, 1)
         up_ref = (tangent.parallel?(z)) ? Geom::Vector3d.new(1, 0, 0) : z
 
-        # Kesit düzleminin eksenleri:
-        #   x_axis: tanjanta ve up_ref'e dik (yüzey boyunca = profil genişliği)
-        #   y_axis: x_axis × tangent  (derinlik = duvardan dışa)
         x_axis = up_ref * tangent
         x_axis.normalize!
         y_axis = x_axis * tangent
@@ -160,13 +149,12 @@ module CAWorks
 
         x_axis.reverse! if @flip_orientation
 
-        # Kesit noktalarını dünya koordinatına dönüştür (path ortalanmış)
         local_pts = Profiles.build_profile_points(profile)
         w_inch    = profile[:width_mm].mm
 
         world_pts = local_pts.map do |lp|
-          ox = lp.x - w_inch / 2.0  # path'i kesit ortasına ortala
-          oy = lp.y                 # derinlik = +y_axis
+          ox = lp.x - w_inch / 2.0
+          oy = lp.y
           dx = x_axis.clone
           if ox.abs > 1.0e-9
             dx.length = ox.abs
@@ -184,10 +172,8 @@ module CAWorks
           start_pt + dx + dy
         end
 
-        # ÖNCESİ/SONRASI farkı için entities snapshot'ını al
         before_entities = entities.to_a
 
-        # Kesit yüzünü direkt parent entities'e ekle.
         face = entities.add_face(world_pts)
         if face.nil?
           UI.messagebox("Kesit yüzü oluşturulamadı.\n"\
@@ -195,10 +181,8 @@ module CAWorks
           return nil
         end
 
-        # Yüz normalini path tanjantına bakacak şekilde çevir.
         face.reverse! if face.normal.dot(tangent) < 0
 
-        # follow-me uygula — kesiti path edge'leri boyunca süpür
         success = face.followme(ordered_edges)
         unless success
           UI.messagebox("follow-me başarısız oldu. "\
@@ -207,38 +191,30 @@ module CAWorks
           return nil
         end
 
-        # Yeni oluşan entity'leri snapshot farkı ile bul
         after_entities = entities.to_a
         new_ents = after_entities - before_entities
 
-        # Path edge'lerini gruba dahil etme (kullanıcının orijinal çizgisi
-        # referans olarak yerinde kalmalı — ama follow-me bunları tükettiyse
-        # zaten new_ents'te olmazlar)
         original_edge_set = ordered_edges.each_with_object({}) { |e, h| h[e] = true }
-        lambri_ents = new_ents.reject { |e| original_edge_set[e] }
+        panel_ents = new_ents.reject { |e| original_edge_set[e] }
 
-        if lambri_ents.empty?
-          UI.messagebox("Lambri geometrisi üretilemedi.")
+        if panel_ents.empty?
+          UI.messagebox("Panel geometrisi üretilemedi.")
           return nil
         end
 
-        group = entities.add_group(lambri_ents)
-        group.name = "Arkopa #{profile[:code]}"
+        group = entities.add_group(panel_ents)
+        group.name = "CA-Wall Panel #{profile[:code]}"
 
-        # Grup attribute'una profil kodunu yaz (sonradan renklendirme için)
-        group.set_attribute('caworks_arkopa', 'profile_code', profile[:code])
-        group.set_attribute('caworks_arkopa', 'profile_name', profile[:name])
-        group.set_attribute('caworks_arkopa', 'width_mm',  profile[:width_mm])
-        group.set_attribute('caworks_arkopa', 'depth_mm',  profile[:depth_mm])
+        group.set_attribute(ATTR_DICT, 'profile_code', profile[:code])
+        group.set_attribute(ATTR_DICT, 'profile_name', profile[:name])
+        group.set_attribute(ATTR_DICT, 'width_mm',  profile[:width_mm])
+        group.set_attribute(ATTR_DICT, 'depth_mm',  profile[:depth_mm])
 
-        # Varsayılan beyaz materyal
         apply_default_material(group)
 
         group
       end
 
-      # Path yönünü doğru belirle: ilk edge'in hangi vertex'i ikinci edge'le
-      # ortak değilse o vertex 'start'tır.
       def self.determine_path_direction(ordered_edges)
         first = ordered_edges.first
         return [first.start.position, first.end.position] if ordered_edges.size == 1
@@ -248,20 +224,18 @@ module CAWorks
         s2     = second.start.position
         e2     = second.end.position
 
-        # İlk edge'in son ucu ikinci edge'in başlangıcı veya bitişi olmalı
         if pt_key(e_pos) == pt_key(s2) || pt_key(e_pos) == pt_key(e2)
-          [first.start.position, first.end.position]  # ileri yön
+          [first.start.position, first.end.position]
         else
-          [first.end.position, first.start.position]  # ters yön
+          [first.end.position, first.start.position]
         end
       end
 
-      # Varsayılan beyaz mat material
       def self.apply_default_material(group)
         model = Sketchup.active_model
-        mat   = model.materials['Arkopa_Default'] ||
-                model.materials.add('Arkopa_Default')
-        mat.color = Sketchup::Color.new(245, 245, 240) # off-white
+        mat   = model.materials['CAWallPanel_Default'] ||
+                model.materials.add('CAWallPanel_Default')
+        mat.color = Sketchup::Color.new(245, 245, 240)
         group.material = mat
       end
 

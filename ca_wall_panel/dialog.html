@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<title>Arkopa Lambri</title>
+<title>CA-Wall Panel</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -55,7 +55,7 @@
 </head>
 <body>
 
-<h2>Arkopa Lambri</h2>
+<h2>CA-Wall Panel</h2>
 <div class="sub">ca//works · Profil seç → çizgi seç → Uygula</div>
 
 <div class="hint">
@@ -78,7 +78,6 @@
   let activeCode = null;
   let profiles = [];
 
-  // Ruby tarafından çağrılır
   function loadProfiles(json) {
     profiles = JSON.parse(json);
     activeCode = profiles[0] ? profiles[0].code : null;
@@ -101,7 +100,6 @@
     });
   }
 
-  // Kesit önizleme SVG'si — ruby'deki üreticiyle uyumlu basit yaklaşıklamalar
   function profileSVG(p) {
     const W = 100, H = 40;
     const w = p.width_mm, d = p.depth_mm;
@@ -197,10 +195,8 @@
       default:
         pts = [[0,0],[w,0],[w,d],[0,d]];
     }
-    // SVG'ye dönüştür: y'yi ters çevir (SVG'de y aşağı)
     const H_total = H;
     const margin = 2;
-    const yMax = Math.max(...pts.map(p => p[1]));
     const path = pts.map((pt, i) => {
       const x = margin + pt[0]*sx;
       const y = H_total - margin - pt[1]*sy;
@@ -227,7 +223,6 @@
     sketchup.open_colors();
   }
 
-  // Ruby'nin yüklemesini bekle
   document.addEventListener('DOMContentLoaded', () => {
     if (typeof sketchup !== 'undefined') sketchup.dialog_ready();
   });

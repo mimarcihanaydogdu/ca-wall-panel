@@ -1,16 +1,17 @@
 # ----------------------------------------------------------------
-#  Arkopa Lambri — Colorize Tool
-#  Yerleştirilmiş lambri gruplarının materyalini değiştirir.
-#  Arkopa renk kütüphanesinden hazır renkler veya custom renk.
+#  CA-Wall Panel — Colorize Tool
+#  Yerleştirilmiş panel gruplarının materyalini değiştirir.
+#  Hazır renk paleti veya custom RGB.
 # ----------------------------------------------------------------
 
 module CAWorks
-  module ArkopaLambri
+  module CAWallPanel
     module Colorize
 
-      # Arkopa renk paleti — High Gloss & Mat tonlarından temsili örnek.
-      # Bu renkler katalogla bire bir aynı olmayabilir; pratik kullanım
-      # için yaklaşıktır. Kullanıcı kendi RGB'sini de girebilir.
+      ATTR_DICT = 'caworks_ca_wall_panel'.freeze
+
+      # Genel-amaçlı renk paleti — High Gloss & Mat tonlarından temsili örnek.
+      # Pratik kullanım için yaklaşıktır. Kullanıcı kendi RGB'sini de girebilir.
       PALETTE = [
         ['Beyaz HG',          [250, 250, 248]],
         ['Krem',              [235, 220, 195]],
@@ -28,46 +29,44 @@ module CAWorks
         ['Hardal',            [195, 165, 55 ]]
       ].freeze
 
-      # Bir grup ve renk al, materyal uygula
       def self.apply_to_selection(color_name, rgb)
         model = Sketchup.active_model
         sel   = model.selection.to_a
 
         groups = sel.select do |e|
           e.is_a?(Sketchup::Group) &&
-            e.get_attribute('caworks_arkopa', 'profile_code')
+            e.get_attribute(ATTR_DICT, 'profile_code')
         end
 
         if groups.empty?
-          UI.messagebox("Önce bir Arkopa lambri grubu seçin.")
+          UI.messagebox("Önce bir CA-Wall Panel grubu seçin.")
           return
         end
 
-        mat_name = "Arkopa_#{color_name.gsub(/\s+/, '_')}"
+        mat_name = "CAWallPanel_#{color_name.gsub(/\s+/, '_')}"
         mat = model.materials[mat_name] || model.materials.add(mat_name)
         mat.color = Sketchup::Color.new(*rgb)
 
-        model.start_operation('Arkopa Lambri Renk', true)
+        model.start_operation('CA-Wall Panel Renk', true)
         groups.each { |g| g.material = mat }
         model.commit_operation
       end
 
-      # Custom renk seçici (SketchUp'un built-in color picker'ı)
       def self.apply_custom
         model = Sketchup.active_model
         sel   = model.selection.to_a.select do |e|
           e.is_a?(Sketchup::Group) &&
-            e.get_attribute('caworks_arkopa', 'profile_code')
+            e.get_attribute(ATTR_DICT, 'profile_code')
         end
 
         if sel.empty?
-          UI.messagebox("Önce bir Arkopa lambri grubu seçin.")
+          UI.messagebox("Önce bir CA-Wall Panel grubu seçin.")
           return
         end
 
         prompts  = ['R (0-255):', 'G (0-255):', 'B (0-255):', 'Renk Adı:']
         defaults = ['200', '200', '200', 'Custom']
-        result   = UI.inputbox(prompts, defaults, 'Arkopa Lambri — Custom Renk')
+        result   = UI.inputbox(prompts, defaults, 'CA-Wall Panel — Custom Renk')
         return unless result
 
         r, g, b = result[0].to_i, result[1].to_i, result[2].to_i

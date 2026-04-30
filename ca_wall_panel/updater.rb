@@ -1,16 +1,18 @@
 # ----------------------------------------------------------------
-#  Arkopa Lambri — GitHub Auto-Updater
+#  CA-Wall Panel — GitHub Auto-Updater
 #  ----------------------------------------------------------------
 #  Mantık:
-#  1) SketchUp açılışında: Plugins/.arkopa_pending/ klasörü varsa
+#  1) SketchUp açılışında: Plugins/.cawp_pending/ klasörü varsa
 #     onu aç, dosyaları yerine taşı, klasörü sil, changelog'u göster.
 #  2) Sonra arka planda GitHub'ın Releases API'sine sor:
-#     yeni bir tag varsa → .rbz asset'ini indir → .arkopa_pending/'e
-#     açılmış halde yaz. (Aktif kod değişmez; bu sefer hiçbir şey görünmez.)
+#     yeni bir tag varsa → .rbz asset'ini indir → .cawp_pending/'e
+#     açılmış halde yaz.
 #  3) Bir sonraki SketchUp açılışında 1. adım çalışır → güncelleme aktif.
 #
-#  Plugins/ klasörü SketchUp çalışırken dosyaları kilitler; o yüzden
-#  "indirme şimdi, aktivasyon sonraki açılışta" pratikte tek güvenli yol.
+#  "Güncelle Plugini" butonu ile canlı güncelleme:
+#  - .rbz indirilir, doğrudan Plugins/ klasörüne açılır,
+#  - tüm .rb dosyaları load() ile yeniden yüklenir.
+#  - SketchUp'ı kapatmaya gerek yoktur.
 # ----------------------------------------------------------------
 
 require 'sketchup.rb'
@@ -18,32 +20,24 @@ require 'json'
 require 'fileutils'
 
 module CAWorks
-  module ArkopaLambri
+  module CAWallPanel
     module Updater
 
       # ---- KONFİGÜRASYON ----------------------------------------
-      # GitHub repo: cihanaydogdu/arkopa-lambri (örnek — değiştir)
       GITHUB_OWNER = 'mimarcihanaydogdu'.freeze
-      GITHUB_REPO  = 'arkopa-lambri'.freeze
+      GITHUB_REPO  = 'ca-wall-panel'.freeze
 
       API_URL = "https://api.github.com/repos/#{GITHUB_OWNER}/#{GITHUB_REPO}/releases/latest".freeze
 
-      # Plugins klasörü yolu (extension yüklendiği yer)
       PLUGINS_DIR = File.dirname(File.dirname(__FILE__)).freeze
-      # Bekleyen güncelleme klasörü — bir sonraki açılışta uygulanacak
-      PENDING_DIR  = File.join(PLUGINS_DIR, '.arkopa_pending').freeze
-      # Son kontrol zamanı / son sürüm bilgisi (tekrarlı kontrolleri önle)
-      STATE_FILE   = File.join(PLUGINS_DIR, '.arkopa_updater_state').freeze
-      # En az kaç saatte bir kontrol edilsin (kullanıcının ağını yormamak için)
+      PENDING_DIR  = File.join(PLUGINS_DIR, '.cawp_pending').freeze
+      STATE_FILE   = File.join(PLUGINS_DIR, '.cawp_updater_state').freeze
       CHECK_INTERVAL_HOURS = 6
 
       # ---- GİRİŞ NOKTASI ----------------------------------------
-      # main.rb yüklendiğinde çağrılır.
       def self.boot
-        # 1) Bekleyen güncelleme varsa önce onu uygula
         apply_pending_if_any
 
-        # 2) Sonra arka planda yeni sürüm kontrolü
         return unless should_check_now?
         Thread.new { check_for_update_silently }
       end
@@ -57,11 +51,8 @@ module CAWorks
         new_version  = File.exist?(version_file) ? File.read(version_file).strip : 'yeni'
         notes        = File.exist?(notes_file)   ? File.read(notes_file).strip   : ''
 
-        # __* meta dosyalarını taşımayacağız
         meta_files = [version_file, notes_file]
 
-        # Pending klasöründeki her şeyi Plugins/ köküne kopyala
-        # (arkopa_lambri.rb + arkopa_lambri/ klasörü)
         Dir.glob(File.join(PENDING_DIR, '**', '*')).each do |src|
           next if meta_files.include?(src)
           next if File.directory?(src)
@@ -72,27 +63,21 @@ module CAWorks
           FileUtils.cp(src, dst)
         end
 
-        # Pending klasörünü sil
         FileUtils.rm_rf(PENDING_DIR)
 
-        # State dosyasını güncelle
         save_state('installed_version' => new_version,
                    'last_check'        => Time.now.to_i)
 
-        # Kullanıcıya değişiklik notunu göster (engaging değil; sadece bilgilendirme)
         UI.messagebox(
-          "✓ Arkopa Lambri güncellendi → v#{new_version}\n\n" \
+          "✓ CA-Wall Panel güncellendi → v#{new_version}\n\n" \
           "#{notes.empty? ? '(değişiklik notu yok)' : notes}\n\n" \
           "Yeni sürüm bu oturumdan itibaren aktiftir."
         )
       rescue StandardError => e
-        # Sessiz hata: kullanıcıyı rahatsız etme, sadece logla
-        warn "[Arkopa Updater] apply_pending hatası: #{e.message}"
-        # Bozuk pending klasörünü temizle ki sonraki açılışta tekrar denemesin
+        warn "[CA-Wall Panel Updater] apply_pending hatası: #{e.message}"
         FileUtils.rm_rf(PENDING_DIR) rescue nil
       end
 
-      # ---- ZAMANI GELDİ Mİ? -------------------------------------
       def self.should_check_now?
         state = load_state
         last  = state['last_check'].to_i
@@ -102,18 +87,17 @@ module CAWorks
 
       # ---- GitHub API'sine SOR ----------------------------------
       def self.check_for_update_silently
-        # SketchUp::Http SketchUp 2017+ ile geldi. Async ve UI'yi bloklamaz.
         request = Sketchup::Http::Request.new(API_URL, Sketchup::Http::GET)
         request.headers = {
           'Accept'     => 'application/vnd.github+json',
-          'User-Agent' => "ArkopaLambri/#{ArkopaLambri::PLUGIN_VERSION}"
+          'User-Agent' => "CAWallPanel/#{CAWallPanel::PLUGIN_VERSION}"
         }
 
         request.start do |req, response|
           handle_release_response(response)
         end
       rescue StandardError => e
-        warn "[Arkopa Updater] kontrol hatası: #{e.message}"
+        warn "[CA-Wall Panel Updater] kontrol hatası: #{e.message}"
         save_state('last_check' => Time.now.to_i)
       end
 
@@ -127,9 +111,8 @@ module CAWorks
 
         latest_tag = data['tag_name'].to_s.sub(/^v/, '')
         return if latest_tag.empty?
-        return unless newer?(latest_tag, ArkopaLambri::PLUGIN_VERSION)
+        return unless newer?(latest_tag, CAWallPanel::PLUGIN_VERSION)
 
-        # .rbz veya .zip asset'ini bul
         asset = (data['assets'] || []).find do |a|
           name = a['name'].to_s.downcase
           name.end_with?('.rbz') || name.end_with?('.zip')
@@ -140,23 +123,21 @@ module CAWorks
         download_and_stage(asset['browser_download_url'], latest_tag, notes)
       end
 
-      # ---- INDIR + STAGE ----------------------------------------
+      # ---- INDIR + STAGE (arka plan) ----------------------------
       def self.download_and_stage(url, version, notes)
         request = Sketchup::Http::Request.new(url, Sketchup::Http::GET)
         request.headers = {
-          'User-Agent' => "ArkopaLambri/#{ArkopaLambri::PLUGIN_VERSION}"
+          'User-Agent' => "CAWallPanel/#{CAWallPanel::PLUGIN_VERSION}"
         }
 
-        # Indirileni temp dosyaya yaz, sonra pending klasörüne aç
-        tmp_zip = File.join(PLUGINS_DIR, ".arkopa_dl_#{Time.now.to_i}.rbz")
+        tmp_zip = File.join(PLUGINS_DIR, ".cawp_dl_#{Time.now.to_i}.rbz")
 
         request.set_download_progress_callback do |current, total|
-          # Sessiz indirme — istenirse buradan toolbar'a progress yazılabilir
         end
 
         request.start do |req, response|
           if response.status_code != 200
-            warn "[Arkopa Updater] indirme başarısız: #{response.status_code}"
+            warn "[CA-Wall Panel Updater] indirme başarısız: #{response.status_code}"
             next
           end
 
@@ -165,12 +146,12 @@ module CAWorks
           if extract_to_pending(tmp_zip, version, notes)
             File.delete(tmp_zip) rescue nil
           else
-            warn "[Arkopa Updater] zip açma başarısız"
+            warn "[CA-Wall Panel Updater] zip açma başarısız"
             File.delete(tmp_zip) rescue nil
           end
         end
       rescue StandardError => e
-        warn "[Arkopa Updater] download_and_stage hatası: #{e.message}"
+        warn "[CA-Wall Panel Updater] download_and_stage hatası: #{e.message}"
       end
 
       # ---- ZIP AÇMA ---------------------------------------------
@@ -182,7 +163,7 @@ module CAWorks
         end
         true
       rescue StandardError => e
-        warn "[Arkopa Updater] extract_zip_to hatası: #{e.message}"
+        warn "[CA-Wall Panel Updater] extract_zip_to hatası: #{e.message}"
         false
       end
 
@@ -196,11 +177,10 @@ module CAWorks
         File.write(File.join(PENDING_DIR, '__notes__'),   notes.to_s)
         true
       rescue StandardError => e
-        warn "[Arkopa Updater] extract hatası: #{e.message}"
+        warn "[CA-Wall Panel Updater] extract hatası: #{e.message}"
         false
       end
 
-      # Saf-Ruby zip extractor (bağımlılık olmadan, sadece store + deflate)
       def self.extract_zip_pure_ruby(zip_path, dest_dir)
         require 'zlib'
         File.open(zip_path, 'rb') do |f|
@@ -208,11 +188,11 @@ module CAWorks
             sig = f.read(4)
             break if sig.nil? || sig != "PK\x03\x04".b
 
-            f.read(2) # version
+            f.read(2)
             gp_flag = f.read(2).unpack1('v')
             method  = f.read(2).unpack1('v')
-            f.read(4) # mod time/date
-            f.read(4) # crc
+            f.read(4)
+            f.read(4)
             comp_size = f.read(4).unpack1('V')
             uncomp_size = f.read(4).unpack1('V')
             name_len  = f.read(2).unpack1('v')
@@ -222,19 +202,18 @@ module CAWorks
 
             data = f.read(comp_size)
 
-            # ZIP64 / streaming entries — bu mini-extractor desteklemez
             if gp_flag.anybits?(0x08)
-              warn "[Arkopa Updater] streaming zip entry desteklenmiyor: #{name}"
+              warn "[CA-Wall Panel Updater] streaming zip entry desteklenmiyor: #{name}"
               return false
             end
 
             content =
-              if method == 0      # store
+              if method == 0
                 data
-              elsif method == 8   # deflate
+              elsif method == 8
                 Zlib::Inflate.new(-Zlib::MAX_WBITS).inflate(data)
               else
-                warn "[Arkopa Updater] bilinmeyen zip metodu #{method}: #{name}"
+                warn "[CA-Wall Panel Updater] bilinmeyen zip metodu #{method}: #{name}"
                 return false
               end
 
@@ -249,12 +228,11 @@ module CAWorks
         end
         true
       rescue StandardError => e
-        warn "[Arkopa Updater] saf-ruby unzip hatası: #{e.message}"
+        warn "[CA-Wall Panel Updater] saf-ruby unzip hatası: #{e.message}"
         false
       end
 
       # ---- SÜRÜM KARŞILAŞTIRMA ----------------------------------
-      # Semantic versioning: "1.2.3" > "1.2.0"
       def self.newer?(remote, local)
         rp = remote.split('.').map { |s| s.to_i }
         lp = local .split('.').map { |s| s.to_i }
@@ -276,17 +254,17 @@ module CAWorks
         state = load_state.merge(updates)
         File.write(STATE_FILE, JSON.generate(state))
       rescue StandardError => e
-        warn "[Arkopa Updater] state kaydı: #{e.message}"
+        warn "[CA-Wall Panel Updater] state kaydı: #{e.message}"
       end
 
       # ---- GÜNCELLE BUTONU — CANLI GÜNCELLEME (yeniden başlatma gerekmez) ---
       def self.update_now!
-        Sketchup.status_text = 'Arkopa Lambri: güncelleme kontrol ediliyor…'
+        Sketchup.status_text = 'CA-Wall Panel: güncelleme kontrol ediliyor…'
 
         request = Sketchup::Http::Request.new(API_URL, Sketchup::Http::GET)
         request.headers = {
           'Accept'     => 'application/vnd.github+json',
-          'User-Agent' => "ArkopaLambri/#{ArkopaLambri::PLUGIN_VERSION}"
+          'User-Agent' => "CAWallPanel/#{CAWallPanel::PLUGIN_VERSION}"
         }
 
         request.start do |_req, response|
@@ -310,8 +288,8 @@ module CAWorks
             next
           end
 
-          unless newer?(latest_tag, ArkopaLambri::PLUGIN_VERSION)
-            UI.messagebox("✓ Zaten güncel — v#{ArkopaLambri::PLUGIN_VERSION}")
+          unless newer?(latest_tag, CAWallPanel::PLUGIN_VERSION)
+            UI.messagebox("✓ Zaten güncel — v#{CAWallPanel::PLUGIN_VERSION}")
             next
           end
 
@@ -333,11 +311,11 @@ module CAWorks
       end
 
       def self.download_and_apply_live(url, version, notes)
-        Sketchup.status_text = "Arkopa Lambri: v#{version} indiriliyor…"
-        tmp_zip = File.join(PLUGINS_DIR, ".arkopa_dl_#{Time.now.to_i}.rbz")
+        Sketchup.status_text = "CA-Wall Panel: v#{version} indiriliyor…"
+        tmp_zip = File.join(PLUGINS_DIR, ".cawp_dl_#{Time.now.to_i}.rbz")
 
         request = Sketchup::Http::Request.new(url, Sketchup::Http::GET)
-        request.headers = { 'User-Agent' => "ArkopaLambri/#{ArkopaLambri::PLUGIN_VERSION}" }
+        request.headers = { 'User-Agent' => "CAWallPanel/#{CAWallPanel::PLUGIN_VERSION}" }
 
         request.start do |_req, response|
           Sketchup.status_text = ''
@@ -366,21 +344,20 @@ module CAWorks
 
       # Dosyaları yerinde yükler — SketchUp'ı kapatmaya gerek yok.
       def self.hot_reload!(version, notes)
-        plugin_dir = File.join(PLUGINS_DIR, 'arkopa_lambri')
+        plugin_dir = File.join(PLUGINS_DIR, 'ca_wall_panel')
 
-        CAWorks::ArkopaLambri.close_dialogs rescue nil
+        CAWorks::CAWallPanel.close_dialogs rescue nil
 
-        # PLUGIN_VERSION sabitini güncelle; Ruby constant uyarısını bastır
         verbose = $VERBOSE
         $VERBOSE = nil
-        load(File.join(PLUGINS_DIR, 'arkopa_lambri.rb'))
+        load(File.join(PLUGINS_DIR, 'ca_wall_panel.rb'))
         $VERBOSE = verbose
 
         %w[profiles.rb apply_tool.rb colorize_tool.rb updater.rb main.rb].each do |f|
-          load(File.join(plugin_dir, f)) rescue warn "[Arkopa] reload: #{f}"
+          load(File.join(plugin_dir, f)) rescue warn "[CA-Wall Panel] reload: #{f}"
         end
 
-        msg  = "✓ Arkopa Lambri güncellendi → v#{version}\n\n"
+        msg  = "✓ CA-Wall Panel güncellendi → v#{version}\n\n"
         msg += notes.empty? ? '(değişiklik notu yok)' : notes
         UI.messagebox(msg)
       rescue StandardError => e
