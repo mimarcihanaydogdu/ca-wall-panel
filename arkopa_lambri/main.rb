@@ -16,6 +16,13 @@ module CAWorks
     @profile_dialog = nil
     @color_dialog   = nil
 
+    def self.close_dialogs
+      @profile_dialog&.close rescue nil
+      @color_dialog&.close   rescue nil
+      @profile_dialog = nil
+      @color_dialog   = nil
+    end
+
     # ------------------------------------------------------------
     #  PROFİL SEÇİM DİYALOĞU
     # ------------------------------------------------------------
@@ -111,7 +118,7 @@ module CAWorks
       menu.add_item('Profil Seç ve Uygula') { show_profile_dialog }
       menu.add_item('Renklendir')           { show_color_dialog   }
       menu.add_separator
-      menu.add_item('Güncellemeyi Şimdi Kontrol Et') { Updater.check_now! }
+      menu.add_item('Güncelle Plugini')              { Updater.update_now! }
       menu.add_item('Hakkında') do
         UI.messagebox(
           "Arkopa Lambri v#{PLUGIN_VERSION}\n\n" \
@@ -147,6 +154,16 @@ module CAWorks
         cmd2.small_icon = icon2
       end
       tb.add_item(cmd2)
+
+      cmd3 = UI::Command.new('Güncelle Plugini') { Updater.update_now! }
+      cmd3.tooltip          = 'Arkopa Lambri — Güncelle (yeniden başlatmadan)'
+      cmd3.status_bar_text  = 'Yeni sürüm varsa anında indirir ve yükler'
+      icon3 = File.join(icon_dir, 'update.svg')
+      if File.exist?(icon3)
+        cmd3.large_icon = icon3
+        cmd3.small_icon = icon3
+      end
+      tb.add_item(cmd3)
 
       tb.show
 

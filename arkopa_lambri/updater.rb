@@ -174,23 +174,23 @@ module CAWorks
       end
 
       # ---- ZIP AÇMA ---------------------------------------------
-      # SketchUp'ın yerleşik zip extractor'ı: Sketchup::Zip (SU 2018+).
-      # Yoksa shell unzip'e düşeceğiz.
+      def self.extract_zip_to(zip_path, dest_dir)
+        if defined?(Sketchup::Zip) && Sketchup::Zip.respond_to?(:extract)
+          Sketchup::Zip.extract(zip_path, dest_dir)
+        else
+          return extract_zip_pure_ruby(zip_path, dest_dir)
+        end
+        true
+      rescue StandardError => e
+        warn "[Arkopa Updater] extract_zip_to hatası: #{e.message}"
+        false
+      end
+
       def self.extract_to_pending(zip_path, version, notes)
         FileUtils.rm_rf(PENDING_DIR)
         FileUtils.mkdir_p(PENDING_DIR)
 
-        success = false
-        if defined?(Sketchup::Zip) && Sketchup::Zip.respond_to?(:extract)
-          # SketchUp 2018+ yerleşik zip
-          Sketchup::Zip.extract(zip_path, PENDING_DIR)
-          success = true
-        else
-          # Eski sürüm fallback — Ruby standart kütüphanesinden mini-unzip
-          success = extract_zip_pure_ruby(zip_path, PENDING_DIR)
-        end
-
-        return false unless success
+        return false unless extract_zip_to(zip_path, PENDING_DIR)
 
         File.write(File.join(PENDING_DIR, '__version__'), version)
         File.write(File.join(PENDING_DIR, '__notes__'),   notes.to_s)
@@ -279,11 +279,112 @@ module CAWorks
         warn "[Arkopa Updater] state kaydı: #{e.message}"
       end
 
-      # ---- ELLE TETİKLEME (debug menü için) ---------------------
-      def self.check_now!
-        UI.messagebox("Güncelleme kontrolü başlatıldı (sessiz). " \
-                      "Yeni sürüm varsa indirilip bir sonraki açılışta uygulanacak.")
-        Thread.new { check_for_update_silently }
+      # ---- GÜNCELLE BUTONU — CANLI GÜNCELLEME (yeniden başlatma gerekmez) ---
+      def self.update_now!
+        Sketchup.status_text = 'Arkopa Lambri: güncelleme kontrol ediliyor…'
+
+        request = Sketchup::Http::Request.new(API_URL, Sketchup::Http::GET)
+        request.headers = {
+          'Accept'     => 'application/vnd.github+json',
+          'User-Agent' => "ArkopaLambri/#{ArkopaLambri::PLUGIN_VERSION}"
+        }
+
+        request.start do |_req, response|
+          Sketchup.status_text = ''
+          save_state('last_check' => Time.now.to_i)
+
+          unless response.status_code == 200
+            UI.messagebox("Güncelleme sunucusuna ulaşılamadı (HTTP #{response.status_code}).")
+            next
+          end
+
+          data = JSON.parse(response.body) rescue nil
+          unless data.is_a?(Hash)
+            UI.messagebox('Güncelleme yanıtı okunamadı.')
+            next
+          end
+
+          latest_tag = data['tag_name'].to_s.sub(/^v/, '')
+          if latest_tag.empty?
+            UI.messagebox('Sürüm bilgisi alınamadı.')
+            next
+          end
+
+          unless newer?(latest_tag, ArkopaLambri::PLUGIN_VERSION)
+            UI.messagebox("✓ Zaten güncel — v#{ArkopaLambri::PLUGIN_VERSION}")
+            next
+          end
+
+          asset = (data['assets'] || []).find do |a|
+            name = a['name'].to_s.downcase
+            name.end_with?('.rbz') || name.end_with?('.zip')
+          end
+          unless asset
+            UI.messagebox("v#{latest_tag} bulundu fakat indirilebilir dosya yok.")
+            next
+          end
+
+          notes = data['body'].to_s
+          download_and_apply_live(asset['browser_download_url'], latest_tag, notes)
+        end
+      rescue StandardError => e
+        Sketchup.status_text = ''
+        UI.messagebox("Güncelleme hatası: #{e.message}")
+      end
+
+      def self.download_and_apply_live(url, version, notes)
+        Sketchup.status_text = "Arkopa Lambri: v#{version} indiriliyor…"
+        tmp_zip = File.join(PLUGINS_DIR, ".arkopa_dl_#{Time.now.to_i}.rbz")
+
+        request = Sketchup::Http::Request.new(url, Sketchup::Http::GET)
+        request.headers = { 'User-Agent' => "ArkopaLambri/#{ArkopaLambri::PLUGIN_VERSION}" }
+
+        request.start do |_req, response|
+          Sketchup.status_text = ''
+
+          unless response.status_code == 200
+            UI.messagebox("İndirme başarısız (HTTP #{response.status_code}).")
+            next
+          end
+
+          File.open(tmp_zip, 'wb') { |f| f.write(response.body) }
+
+          if extract_zip_to(tmp_zip, PLUGINS_DIR)
+            File.delete(tmp_zip) rescue nil
+            save_state('installed_version' => version, 'last_check' => Time.now.to_i)
+            hot_reload!(version, notes)
+          else
+            File.delete(tmp_zip) rescue nil
+            UI.messagebox('Dosyalar açılamadı. Manuel kurulum gerekebilir.')
+          end
+        end
+      rescue StandardError => e
+        Sketchup.status_text = ''
+        File.delete(tmp_zip) rescue nil if defined?(tmp_zip)
+        UI.messagebox("İndirme hatası: #{e.message}")
+      end
+
+      # Dosyaları yerinde yükler — SketchUp'ı kapatmaya gerek yok.
+      def self.hot_reload!(version, notes)
+        plugin_dir = File.join(PLUGINS_DIR, 'arkopa_lambri')
+
+        CAWorks::ArkopaLambri.close_dialogs rescue nil
+
+        # PLUGIN_VERSION sabitini güncelle; Ruby constant uyarısını bastır
+        verbose = $VERBOSE
+        $VERBOSE = nil
+        load(File.join(PLUGINS_DIR, 'arkopa_lambri.rb'))
+        $VERBOSE = verbose
+
+        %w[profiles.rb apply_tool.rb colorize_tool.rb updater.rb main.rb].each do |f|
+          load(File.join(plugin_dir, f)) rescue warn "[Arkopa] reload: #{f}"
+        end
+
+        msg  = "✓ Arkopa Lambri güncellendi → v#{version}\n\n"
+        msg += notes.empty? ? '(değişiklik notu yok)' : notes
+        UI.messagebox(msg)
+      rescue StandardError => e
+        UI.messagebox("Reload hatası: #{e.message}\nDeğişiklikler bir sonraki açılışta aktif olur.")
       end
 
     end

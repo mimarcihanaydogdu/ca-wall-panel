@@ -20,7 +20,7 @@ module CAWorks
 
     PLUGIN_ID      = 'caworks_arkopa_lambri'.freeze
     PLUGIN_NAME    = 'Arkopa Lambri'.freeze
-    PLUGIN_VERSION = '0.1.0'.freeze
+    PLUGIN_VERSION = '0.2.0'.freeze
     PLUGIN_AUTHOR  = 'ca//works (Cihan Aydoğdu)'.freeze
 
     PLUGIN_ROOT = File.dirname(__FILE__)
