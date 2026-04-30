@@ -40,9 +40,9 @@ module CAWorks
         scrollable:     true,
         resizable:      true,
         width:          440,
-        height:         620,
+        height:         680,
         min_width:      320,
-        min_height:     400,
+        min_height:     460,
         style:          UI::HtmlDialog::STYLE_DIALOG
       )
       @profile_dialog.set_file(html_path)
@@ -50,16 +50,19 @@ module CAWorks
       @profile_dialog.add_action_callback('dialog_ready') do |_ctx|
         json = Profiles.all.to_json
         @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
+        @profile_dialog.execute_script(
+          "setDefaultHeight(#{ApplyTool.last_height_mm.to_f});"
+        )
       end
 
       @profile_dialog.add_action_callback('set_active_profile') do |_ctx, code|
         ApplyTool.active_profile_code = code
       end
 
-      @profile_dialog.add_action_callback('apply_profile') do |_ctx, code, flip|
+      @profile_dialog.add_action_callback('apply_profile') do |_ctx, code, flip, height_mm|
         ApplyTool.active_profile_code = code
         ApplyTool.flip_orientation    = flip
-        ApplyTool.run
+        ApplyTool.run(height_mm.to_f)
       end
 
       @profile_dialog.add_action_callback('open_colors') do |_ctx|
@@ -124,9 +127,10 @@ module CAWorks
           "ca//works · Cihan Aydoğdu Mimarlık\n\n" \
           "Kullanım:\n" \
           "1) 'Profil Seç ve Uygula' menüsünden bir profil seçin.\n" \
-          "2) SketchUp'ta uygulamak istediğiniz çizgi/yay/daire/curve'ü seçin.\n" \
-          "3) Diyalogdan 'Uygula' butonuna basın.\n" \
-          "4) Renklendirmek için panel grubunu seçip 'Renklendir' menüsünü açın."
+          "2) Diyalogdan panel yüksekliğini girin.\n" \
+          "3) SketchUp'ta uygulamak istediğiniz çizgi/yay/daire/curve'ü seçin.\n" \
+          "4) 'Uygula' butonuna basın — paneller yan yana dik dizilir.\n" \
+          "5) Renklendirmek için panel grubunu seçip 'Renklendir' menüsünü açın."
         )
       end
 
@@ -136,7 +140,7 @@ module CAWorks
 
       cmd1 = UI::Command.new('CA-Wall Panel') { show_profile_dialog }
       cmd1.tooltip          = 'CA-Wall Panel — Profil seç ve uygula'
-      cmd1.status_bar_text  = 'Bir çizgi/yay/daire seçip duvar paneli profilini uygulayın'
+      cmd1.status_bar_text  = 'Bir çizgi/yay/daire seçip duvar paneli profilini yan yana dizin'
       icon1 = File.join(icon_dir, 'panel.svg')
       if File.exist?(icon1)
         cmd1.large_icon = icon1

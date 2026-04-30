@@ -1,28 +1,35 @@
 # ----------------------------------------------------------------
-#  CA-Wall Panel — Apply Tool
+#  CA-Wall Panel — Apply Tool (v0.2.0)
 #  Kullanıcı bir veya daha fazla bağlantılı edge (line/arc/circle/curve)
-#  seçer; aktif profile göre kesit yüzü, ilk edge'in başlangıç noktasına
-#  ve tanjantına göre dik düzlemde oluşturulur; follow-me ile path
-#  boyunca uzatılır. Sonuç bir grup (Group) olarak yerleştirilir.
+#  seçer ve diyalogda bir yükseklik girer; aktif profile göre, çizgi
+#  boyunca panel genişliği adımlarla yan yana dik panel grupları
+#  oluşturulur. Her panel kendi alt grubu olarak yerleştirilir, hepsi
+#  ortak bir CA-Wall Panel grubunda toplanır.
+#
+#  Geometri: profil kesiti yatay düzlemde (path tanjantı = X, dik
+#  yatay normal = Y) kurulur, ardından pushpull ile yukarı (+Z)
+#  yükseklik kadar extrude edilir.
 # ----------------------------------------------------------------
 
 module CAWorks
   module CAWallPanel
     module ApplyTool
 
-      ATTR_DICT = 'caworks_ca_wall_panel'.freeze
+      ATTR_DICT         = 'caworks_ca_wall_panel'.freeze
+      DEFAULT_HEIGHT_MM = 2800.0
 
       @active_profile_code = '18126-46'
       @flip_orientation    = false
+      @last_height_mm      = DEFAULT_HEIGHT_MM
 
       class << self
-        attr_accessor :active_profile_code, :flip_orientation
+        attr_accessor :active_profile_code, :flip_orientation, :last_height_mm
       end
 
       # ------------------------------------------------------------
-      #  GİRİŞ: Komut çalışınca seçimi alıp uygulama yapar
+      #  GİRİŞ
       # ------------------------------------------------------------
-      def self.run
+      def self.run(height_mm = nil)
         model = Sketchup.active_model
         sel   = model.selection.to_a.select { |e| e.is_a?(Sketchup::Edge) }
 
@@ -38,6 +45,27 @@ module CAWorks
           UI.messagebox("Aktif profil bulunamadı: #{@active_profile_code}")
           return
         end
+
+        h_mm = (height_mm || @last_height_mm).to_f
+        if h_mm <= 0
+          UI.messagebox("Geçerli bir yükseklik girin.")
+          return
+        end
+
+        max_mm = profile[:length_mm].to_f
+        if h_mm > max_mm
+          answer = UI.messagebox(
+            "Malzeme boyutunu geçtiniz!\n\n" \
+            "Girilen yükseklik     : #{h_mm.round} mm\n" \
+            "Profil standart boyu  : #{max_mm.round} mm\n\n" \
+            "Bu boyda tek parça malzeme bulunmayabilir; uygulamada birden fazla "\
+            "parça gerekecektir.\n\nYine de devam edilsin mi?",
+            MB_YESNO
+          )
+          return if answer == IDNO
+        end
+
+        @last_height_mm = h_mm
 
         ordered = order_edges(sel)
         if ordered.nil? || ordered.empty?
@@ -55,7 +83,7 @@ module CAWorks
 
         model.start_operation('CA-Wall Panel Uygula', true)
         begin
-          group = build_panel(model, parent_entities, ordered, profile)
+          group = build_panels_along_path(model, parent_entities, ordered, profile, h_mm)
           if group
             model.selection.clear
             model.selection.add(group)
@@ -68,9 +96,7 @@ module CAWorks
       end
 
       # ------------------------------------------------------------
-      #  EDGE SIRALAMA — bağlantılı edge dizisini, ilk uçtan son uca
-      #  yürüyecek biçimde sıralar. Kapalı (daire) ise herhangi bir
-      #  edge'den başlar.
+      #  EDGE SIRALAMA
       # ------------------------------------------------------------
       def self.order_edges(edges)
         return [] if edges.empty?
@@ -127,108 +153,171 @@ module CAWorks
       end
 
       # ------------------------------------------------------------
-      #  ANA İNŞA — kesit yüzünü kur, follow-me uygula
+      #  PATH ÖRNEKLEME — yürüyüş yönüne göre segment listesi
+      #  (eğri/yayda her edge ayrı segment, kümülatif uzunluk hesaplı)
       # ------------------------------------------------------------
-      def self.build_panel(model, entities, ordered_edges, profile)
-        start_pt, next_pt = determine_path_direction(ordered_edges)
+      def self.compute_walk_segments(ordered_edges)
+        return [] if ordered_edges.empty?
 
-        tangent = next_pt - start_pt
-        if tangent.length.to_f < 1.0e-6
-          UI.messagebox("Path başlangıç tanjantı hesaplanamadı.")
-          return nil
+        if ordered_edges.size == 1
+          e = ordered_edges.first
+          a = e.start.position; b = e.end.position
+          return [{ a: a, b: b, length: (b - a).length, cum_start: 0.0 }]
         end
-        tangent.normalize!
 
-        z = Geom::Vector3d.new(0, 0, 1)
-        up_ref = (tangent.parallel?(z)) ? Geom::Vector3d.new(1, 0, 0) : z
+        segments   = []
+        cumulative = 0.0
 
-        x_axis = up_ref * tangent
-        x_axis.normalize!
-        y_axis = x_axis * tangent
-        y_axis.normalize!
+        e1  = ordered_edges[0]
+        e2  = ordered_edges[1]
+        e1s = e1.start.position
+        e1e = e1.end.position
+        if pt_key(e1e) == pt_key(e2.start.position) ||
+           pt_key(e1e) == pt_key(e2.end.position)
+          a = e1s; b = e1e
+        else
+          a = e1e; b = e1s
+        end
+        len = (b - a).length
+        segments << { a: a, b: b, length: len, cum_start: 0.0 }
+        cumulative += len
+        prev_end = b
 
-        x_axis.reverse! if @flip_orientation
-
-        local_pts = Profiles.build_profile_points(profile)
-        w_inch    = profile[:width_mm].mm
-
-        world_pts = local_pts.map do |lp|
-          ox = lp.x - w_inch / 2.0
-          oy = lp.y
-          dx = x_axis.clone
-          if ox.abs > 1.0e-9
-            dx.length = ox.abs
-            dx.reverse! if ox < 0
+        ordered_edges[1..-1].each do |e|
+          es = e.start.position; ee = e.end.position
+          if pt_key(es) == pt_key(prev_end)
+            a = es; b = ee
           else
-            dx = Geom::Vector3d.new(0, 0, 0)
+            a = ee; b = es
           end
-          dy = y_axis.clone
-          if oy.abs > 1.0e-9
-            dy.length = oy.abs
-            dy.reverse! if oy < 0
-          else
-            dy = Geom::Vector3d.new(0, 0, 0)
-          end
-          start_pt + dx + dy
+          len = (b - a).length
+          segments << { a: a, b: b, length: len, cum_start: cumulative }
+          cumulative += len
+          prev_end = b
         end
 
-        before_entities = entities.to_a
-
-        face = entities.add_face(world_pts)
-        if face.nil?
-          UI.messagebox("Kesit yüzü oluşturulamadı.\n"\
-                        "Profil noktalarının düzlemsel ve geçerli olduğunu kontrol edin.")
-          return nil
-        end
-
-        face.reverse! if face.normal.dot(tangent) < 0
-
-        success = face.followme(ordered_edges)
-        unless success
-          UI.messagebox("follow-me başarısız oldu. "\
-                        "Path geometrisi (örn. sıfır-uzunluk edge) hatalı olabilir.")
-          face.erase! if face.valid?
-          return nil
-        end
-
-        after_entities = entities.to_a
-        new_ents = after_entities - before_entities
-
-        original_edge_set = ordered_edges.each_with_object({}) { |e, h| h[e] = true }
-        panel_ents = new_ents.reject { |e| original_edge_set[e] }
-
-        if panel_ents.empty?
-          UI.messagebox("Panel geometrisi üretilemedi.")
-          return nil
-        end
-
-        group = entities.add_group(panel_ents)
-        group.name = "CA-Wall Panel #{profile[:code]}"
-
-        group.set_attribute(ATTR_DICT, 'profile_code', profile[:code])
-        group.set_attribute(ATTR_DICT, 'profile_name', profile[:name])
-        group.set_attribute(ATTR_DICT, 'width_mm',  profile[:width_mm])
-        group.set_attribute(ATTR_DICT, 'depth_mm',  profile[:depth_mm])
-
-        apply_default_material(group)
-
-        group
+        segments
       end
 
-      def self.determine_path_direction(ordered_edges)
-        first = ordered_edges.first
-        return [first.start.position, first.end.position] if ordered_edges.size == 1
-
-        second = ordered_edges[1]
-        e_pos  = first.end.position
-        s2     = second.start.position
-        e2     = second.end.position
-
-        if pt_key(e_pos) == pt_key(s2) || pt_key(e_pos) == pt_key(e2)
-          [first.start.position, first.end.position]
-        else
-          [first.end.position, first.start.position]
+      def self.sample_at_distance(segments, d)
+        segments.each do |seg|
+          if d <= seg[:cum_start] + seg[:length] + 1.0e-9
+            t = seg[:length] > 1.0e-12 ? (d - seg[:cum_start]) / seg[:length] : 0.0
+            t = 0.0 if t < 0.0
+            t = 1.0 if t > 1.0
+            pos = Geom::Point3d.linear_combination(1.0 - t, seg[:a], t, seg[:b])
+            tan = seg[:b] - seg[:a]
+            tan.length = 1.0 if tan.length > 1.0e-12
+            return [pos, tan]
+          end
         end
+        last = segments.last
+        tan  = last[:b] - last[:a]
+        tan.length = 1.0 if tan.length > 1.0e-12
+        [last[:b], tan]
+      end
+
+      # ------------------------------------------------------------
+      #  ANA İNŞA — path boyunca panelleri yan yana yerleştir
+      # ------------------------------------------------------------
+      def self.build_panels_along_path(model, entities, ordered_edges, profile, height_mm)
+        segments = compute_walk_segments(ordered_edges)
+        return nil if segments.empty?
+
+        total_len_inch = segments.sum { |s| s[:length] }
+        panel_w_inch   = profile[:width_mm].mm
+        height_inch    = height_mm.mm
+
+        if total_len_inch < panel_w_inch
+          UI.messagebox(
+            "Çizgi en az bir panel boyu (#{profile[:width_mm]}mm) olmalı.\n" \
+            "Seçili path uzunluğu: #{(total_len_inch / 1.mm).round} mm"
+          )
+          return nil
+        end
+
+        panel_count = (total_len_inch / panel_w_inch).floor
+        local_pts   = Profiles.build_profile_points(profile)
+
+        panel_groups = []
+
+        panel_count.times do |i|
+          d_start = i * panel_w_inch
+          pos, tangent = sample_at_distance(segments, d_start)
+          pg = place_panel(entities, pos, tangent, local_pts, profile, height_inch)
+          panel_groups << pg if pg
+        end
+
+        return nil if panel_groups.empty?
+
+        parent = entities.add_group(panel_groups)
+        parent.name = "CA-Wall Panel #{profile[:code]} " \
+                      "(#{panel_groups.size}× #{profile[:width_mm]}×#{profile[:depth_mm]}mm, " \
+                      "h=#{height_mm.round}mm)"
+
+        parent.set_attribute(ATTR_DICT, 'profile_code', profile[:code])
+        parent.set_attribute(ATTR_DICT, 'profile_name', profile[:name])
+        parent.set_attribute(ATTR_DICT, 'width_mm',    profile[:width_mm])
+        parent.set_attribute(ATTR_DICT, 'depth_mm',    profile[:depth_mm])
+        parent.set_attribute(ATTR_DICT, 'height_mm',   height_mm)
+        parent.set_attribute(ATTR_DICT, 'panel_count', panel_groups.size)
+
+        apply_default_material(parent)
+
+        parent
+      end
+
+      # ------------------------------------------------------------
+      #  TEK PANEL — yatay düzlemde profil kesiti + yukarı pushpull
+      # ------------------------------------------------------------
+      def self.place_panel(entities, pos, tangent, local_pts, profile, height_inch)
+        t_h = Geom::Vector3d.new(tangent.x, tangent.y, 0)
+        if t_h.length < 1.0e-9
+          t_h = Geom::Vector3d.new(1, 0, 0)
+        else
+          t_h.normalize!
+        end
+
+        z = Geom::Vector3d.new(0, 0, 1)
+        n = t_h * z
+        if n.length < 1.0e-9
+          n = Geom::Vector3d.new(0, 1, 0)
+        else
+          n.normalize!
+        end
+        n.reverse! if @flip_orientation
+
+        base_pts = local_pts.map do |lp|
+          p = pos
+          p = offset_pt(p, t_h, lp.x)
+          p = offset_pt(p, n,   lp.y)
+          p
+        end
+
+        panel_group = entities.add_group
+        panel_ents  = panel_group.entities
+
+        face = panel_ents.add_face(base_pts)
+        if face.nil?
+          panel_group.erase! if panel_group.valid?
+          return nil
+        end
+
+        z_up = Geom::Vector3d.new(0, 0, 1)
+        face.reverse! if face.normal.dot(z_up) < 0
+
+        face.pushpull(height_inch)
+
+        panel_group.name = profile[:code]
+        panel_group
+      end
+
+      def self.offset_pt(p, vec, amount)
+        return p if amount.abs < 1.0e-9
+        v = vec.clone
+        v.length = amount.abs
+        v.reverse! if amount < 0
+        p.offset(v)
       end
 
       def self.apply_default_material(group)

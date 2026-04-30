@@ -51,16 +51,45 @@
     display: flex; align-items: center; gap: 6px;
     margin-bottom: 10px; font-size: 11px;
   }
+  .height-row {
+    background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  }
+  .height-row label { font-weight: 600; font-size: 11px; }
+  .height-row input[type=number] {
+    width: 90px; padding: 4px 6px;
+    border: 1px solid #bbb; border-radius: 3px; font-size: 12px;
+  }
+  .unit { font-size: 11px; color: #666; }
+  .profile-len-info {
+    color: #666; font-size: 11px; margin-left: auto;
+  }
+  .warn {
+    width: 100%;
+    background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15;
+    padding: 4px 8px; border-radius: 3px; font-size: 11px;
+    margin-top: 4px;
+  }
 </style>
 </head>
 <body>
 
 <h2>CA-Wall Panel</h2>
-<div class="sub">ca//works · Profil seç → çizgi seç → Uygula</div>
+<div class="sub">ca//works · Profil seç → yükseklik gir → çizgi seç → Uygula</div>
 
 <div class="hint">
-  <strong>Kullanım:</strong> Önce bir profil seçin. Sonra SketchUp'ta uygulamak
-  istediğiniz çizgi/yay/daire/curve'ü seçin. Ardından <em>Uygula</em>'ya basın.
+  <strong>Kullanım:</strong> Bir profil seçin ve panel yüksekliğini girin.
+  SketchUp'ta uygulamak istediğiniz çizgi/yay/daire/curve'ü seçin — paneller
+  bu hat boyunca yan yana dik dizilecektir. Ardından <em>Uygula</em>'ya basın.
+</div>
+
+<div class="height-row">
+  <label for="height">Yükseklik:</label>
+  <input type="number" id="height" min="50" max="20000" step="10" value="2800" oninput="validateHeight()">
+  <span class="unit">mm</span>
+  <div class="profile-len-info" id="profileLenInfo">Standart boy: —</div>
+  <div class="warn" id="heightWarn" style="display:none;"></div>
 </div>
 
 <div class="checkbox-row">
@@ -82,6 +111,14 @@
     profiles = JSON.parse(json);
     activeCode = profiles[0] ? profiles[0].code : null;
     renderGrid();
+    updateProfileLenInfo();
+    validateHeight();
+  }
+
+  function setDefaultHeight(h) {
+    const el = document.getElementById('height');
+    if (h && h > 0) el.value = h;
+    validateHeight();
   }
 
   function renderGrid() {
@@ -210,13 +247,42 @@
   function selectProfile(code) {
     activeCode = code;
     renderGrid();
+    updateProfileLenInfo();
+    validateHeight();
     sketchup.set_active_profile(code);
+  }
+
+  function activeProfile() {
+    return profiles.find(x => x.code === activeCode);
+  }
+
+  function updateProfileLenInfo() {
+    const p = activeProfile();
+    const el = document.getElementById('profileLenInfo');
+    el.textContent = p ? `Standart boy: ${p.length_mm}mm` : 'Standart boy: —';
+  }
+
+  function validateHeight() {
+    const p = activeProfile();
+    const h = parseFloat(document.getElementById('height').value);
+    const warn = document.getElementById('heightWarn');
+    if (p && !isNaN(h) && h > p.length_mm) {
+      warn.style.display = 'block';
+      warn.textContent = `⚠ Malzeme boyutunu geçtiniz (max ${p.length_mm}mm). Uygula'da onaylamanız istenecek.`;
+    } else {
+      warn.style.display = 'none';
+    }
   }
 
   function applyProfile() {
     if (!activeCode) return;
     const flip = document.getElementById('flip').checked;
-    sketchup.apply_profile(activeCode, flip);
+    const h = parseFloat(document.getElementById('height').value);
+    if (!h || h <= 0) {
+      alert('Geçerli bir yükseklik girin.');
+      return;
+    }
+    sketchup.apply_profile(activeCode, flip, h);
   }
 
   function openColors() {
