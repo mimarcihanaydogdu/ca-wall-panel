@@ -1,0 +1,52 @@
+name: Build and Release
+
+# Tetikleyici: "v" ile başlayan tag push'ları (örn. v0.1.1, v0.2.0)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # Release oluşturmak için gerekli
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Verify plugin version matches tag
+        run: |
+          PLUGIN_VERSION=$(grep -oP "PLUGIN_VERSION\s*=\s*'\K[^']+" arkopa_lambri.rb)
+          if [ "$PLUGIN_VERSION" != "${{ steps.version.outputs.VERSION }}" ]; then
+            echo "::error::Tag (${{ steps.version.outputs.VERSION }}) ile arkopa_lambri.rb içindeki PLUGIN_VERSION ($PLUGIN_VERSION) uyuşmuyor."
+            exit 1
+          fi
+
+      - name: Build .rbz package
+        run: |
+          zip -r arkopa_lambri.rbz \
+            arkopa_lambri.rb \
+            arkopa_lambri/ \
+            -x "*.DS_Store" "*.git*"
+          ls -la arkopa_lambri.rbz
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Arkopa Lambri v${{ steps.version.outputs.VERSION }}
+          body: |
+            **Yükleme:** SketchUp → Window → Extension Manager → Install Extension → `arkopa_lambri.rbz`
+
+            Otomatik güncelleme açıksa zaten yeni sürüm bir sonraki açılışta inecek.
+
+            ### Değişiklikler
+            <!-- Buraya release notlarını yaz; bu metin updater tarafından gösterilir -->
+          files: arkopa_lambri.rbz
+          draft: false
+          prerelease: false

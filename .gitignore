@@ -1,0 +1,15 @@
+# Build artifacts
+*.rbz
+*.zip
+
+# Updater state (kullanıcı makinelerinde oluşur, repo'ya girmemeli)
+.arkopa_pending/
+.arkopa_updater_state
+.arkopa_dl_*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

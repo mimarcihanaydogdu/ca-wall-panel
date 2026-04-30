@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Arkopa Renkler</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Tahoma, sans-serif;
+    margin: 0; padding: 12px;
+    background: #f5f5f5; color: #222;
+    font-size: 12px;
+  }
+  h2 { margin: 0 0 4px; font-size: 14px; }
+  .sub { color: #666; margin-bottom: 12px; font-size: 11px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .swatch {
+    border: 2px solid #ddd; border-radius: 4px;
+    overflow: hidden; cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .swatch:hover { transform: translateY(-1px); border-color: #999; }
+  .swatch .color { height: 50px; }
+  .swatch .name {
+    background: #fff; padding: 4px; text-align: center;
+    font-size: 10px;
+  }
+  button {
+    width: 100%; padding: 8px; font-size: 12px;
+    background: #555; color: #fff; border: none; border-radius: 4px;
+    cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #333; }
+  .hint {
+    background: #eef5ff; border: 1px solid #b6d4f7;
+    padding: 6px 8px; border-radius: 4px; margin-bottom: 10px;
+    font-size: 11px; color: #2050a0;
+  }
+</style>
+</head>
+<body>
+
+<h2>Arkopa Renkler</h2>
+<div class="sub">Yerleştirilmiş lambri grubunu seçip renge tıklayın</div>
+
+<div class="hint">
+  Önce SketchUp'ta bir Arkopa lambri grubunu seçin, sonra aşağıdan renk seçin.
+</div>
+
+<div class="grid" id="paletteGrid"></div>
+
+<button onclick="customColor()">+ Custom Renk (RGB)</button>
+
+<script>
+  let palette = [];
+
+  function loadPalette(json) {
+    palette = JSON.parse(json);
+    renderPalette();
+  }
+
+  function renderPalette() {
+    const grid = document.getElementById('paletteGrid');
+    grid.innerHTML = '';
+    palette.forEach(([name, rgb]) => {
+      const sw = document.createElement('div');
+      sw.className = 'swatch';
+      sw.onclick = () => applyColor(name, rgb);
+      sw.innerHTML = `
+        <div class="color" style="background: rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></div>
+        <div class="name">${name}</div>
+      `;
+      grid.appendChild(sw);
+    });
+  }
+
+  function applyColor(name, rgb) {
+    sketchup.apply_color(name, rgb[0], rgb[1], rgb[2]);
+  }
+
+  function customColor() {
+    sketchup.custom_color();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof sketchup !== 'undefined') sketchup.palette_ready();
+  });
+</script>
+</body>
+</html>

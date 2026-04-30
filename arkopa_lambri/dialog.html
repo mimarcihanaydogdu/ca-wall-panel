@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Arkopa Lambri</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Tahoma, sans-serif;
+    margin: 0; padding: 12px;
+    background: #f5f5f5; color: #222;
+    font-size: 12px;
+  }
+  h2 { margin: 0 0 4px; font-size: 14px; }
+  .sub { color: #666; margin-bottom: 12px; font-size: 11px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .card {
+    background: #fff; border: 2px solid #ddd; border-radius: 6px;
+    padding: 8px; cursor: pointer; text-align: center;
+    transition: all 0.12s;
+  }
+  .card:hover { border-color: #999; }
+  .card.active { border-color: #f5a623; background: #fffaf0; }
+  .card svg { width: 100%; height: 48px; display: block; }
+  .card .code { font-weight: 600; margin-top: 4px; font-size: 11px; }
+  .card .dim { color: #888; font-size: 10px; }
+  .actions {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    border-top: 1px solid #ddd; padding-top: 10px;
+  }
+  button {
+    flex: 1; min-width: 90px;
+    padding: 8px 10px; font-size: 12px;
+    background: #f5a623; color: #fff; border: none; border-radius: 4px;
+    cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #d98e0a; }
+  button.secondary { background: #555; }
+  button.secondary:hover { background: #333; }
+  .hint {
+    background: #fffbe6; border: 1px solid #f5d76e;
+    padding: 6px 8px; border-radius: 4px; margin-bottom: 10px;
+    font-size: 11px; color: #6a4f00;
+  }
+  .checkbox-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 10px; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<h2>Arkopa Lambri</h2>
+<div class="sub">ca//works · Profil seç → çizgi seç → Uygula</div>
+
+<div class="hint">
+  <strong>Kullanım:</strong> Önce bir profil seçin. Sonra SketchUp'ta uygulamak
+  istediğiniz çizgi/yay/daire/curve'ü seçin. Ardından <em>Uygula</em>'ya basın.
+</div>
+
+<div class="checkbox-row">
+  <input type="checkbox" id="flip"> <label for="flip">Profili ters çevir (iç/dış yön)</label>
+</div>
+
+<div class="grid" id="profileGrid"></div>
+
+<div class="actions">
+  <button onclick="applyProfile()">✓ Uygula</button>
+  <button class="secondary" onclick="openColors()">🎨 Renk</button>
+</div>
+
+<script>
+  let activeCode = null;
+  let profiles = [];
+
+  // Ruby tarafından çağrılır
+  function loadProfiles(json) {
+    profiles = JSON.parse(json);
+    activeCode = profiles[0] ? profiles[0].code : null;
+    renderGrid();
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('profileGrid');
+    grid.innerHTML = '';
+    profiles.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'card' + (p.code === activeCode ? ' active' : '');
+      card.onclick = () => selectProfile(p.code);
+      card.innerHTML = `
+        ${profileSVG(p)}
+        <div class="code">${p.code}</div>
+        <div class="dim">${p.width_mm}×${p.depth_mm}mm</div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  // Kesit önizleme SVG'si — ruby'deki üreticiyle uyumlu basit yaklaşıklamalar
+  function profileSVG(p) {
+    const W = 100, H = 40;
+    const w = p.width_mm, d = p.depth_mm;
+    const sx = (W - 4) / w;
+    const sy = Math.min((H - 8) / Math.max(d, 8), sx * 1.5);
+    let pts;
+    switch(p.pattern) {
+      case 'flat':
+        pts = [[0,0],[w,0],[w,d],[0,d]]; break;
+      case 'v_groove': {
+        const gw = p.params.groove_width || 8, gd = p.params.groove_depth || 4;
+        const cx = w/2;
+        pts = [[0,0],[w,0],[w,d],[cx+gw/2,d],[cx,d-gd],[cx-gw/2,d],[0,d]];
+        break;
+      }
+      case 'double_groove': {
+        const gw = p.params.groove_width || 6, gd = p.params.groove_depth || 3.5;
+        const sp = p.params.groove_spacing || 30;
+        const cx = w/2, c1 = cx-sp/2, c2 = cx+sp/2;
+        pts = [[0,0],[w,0],[w,d],
+               [c2+gw/2,d],[c2,d-gd],[c2-gw/2,d],
+               [c1+gw/2,d],[c1,d-gd],[c1-gw/2,d],
+               [0,d]];
+        break;
+      }
+      case 'u_groove': {
+        const gw = p.params.groove_width || 14, gd = p.params.groove_depth || 5;
+        const cx = w/2;
+        pts = [[0,0],[w,0],[w,d],
+               [cx+gw/2,d],[cx+gw/2,d-gd],[cx-gw/2,d-gd],[cx-gw/2,d],
+               [0,d]];
+        break;
+      }
+      case 'ribbed': {
+        const n = p.params.rib_count || 8, rd = p.params.rib_depth || 3;
+        const seg = w/n;
+        pts = [[0,0],[w,0],[w,d]];
+        for (let i = 1; i < n; i++) {
+          const x = w - i*seg;
+          pts.push([x+seg/2, d]);
+          pts.push([x, d-rd]);
+        }
+        pts.push([seg/2, d]);
+        pts.push([0, d]);
+        break;
+      }
+      case 'half_round': {
+        const r = p.params.radius || 6;
+        pts = [[0,0],[w,0],[w,d]];
+        const seg = 12;
+        for (let i = 0; i <= seg; i++) {
+          const t = i/seg, ang = t*Math.PI;
+          pts.push([w/2 + (w/2)*Math.cos(ang), d + r*Math.sin(ang)]);
+        }
+        pts.push([0, d]);
+        break;
+      }
+      case 'step': {
+        const sc = p.params.step_count || 2, sd = p.params.step_depth || 6;
+        const cx = w/2, total = w*0.5, sw = total/sc;
+        pts = [[0,0],[w,0],[w,d]];
+        for (let i = 0; i < sc; i++) {
+          const xo = cx + total/2 - i*sw;
+          const y = d - i*sd;
+          pts.push([xo, y]); pts.push([xo-sw, y]);
+        }
+        const dy = d - sc*sd;
+        pts.push([cx+total/2 - sc*sw, dy]);
+        pts.push([cx-total/2 + sc*sw, dy]);
+        for (let i = sc; i >= 1; i--) {
+          const xi = cx - total/2 + (i-1)*sw;
+          const y = d - (i-1)*sd;
+          pts.push([xi, y]); pts.push([xi-sw, y]);
+        }
+        pts.push([0, d]);
+        break;
+      }
+      case 'reeded': {
+        const n = p.params.rib_count || 14, rr = p.params.rib_radius || 4;
+        const rw = w/n, ar = Math.min(rw/2, rr);
+        pts = [[0,0],[w,0],[w,d]];
+        for (let i = n-1; i >= 0; i--) {
+          const cx = (i+0.5)*rw;
+          const seg = 6;
+          for (let k = 0; k <= seg; k++) {
+            const t = k/seg, ang = t*Math.PI;
+            pts.push([cx + ar*Math.cos(ang), d + ar*Math.sin(ang)]);
+          }
+        }
+        pts.push([0, d]);
+        break;
+      }
+      default:
+        pts = [[0,0],[w,0],[w,d],[0,d]];
+    }
+    // SVG'ye dönüştür: y'yi ters çevir (SVG'de y aşağı)
+    const H_total = H;
+    const margin = 2;
+    const yMax = Math.max(...pts.map(p => p[1]));
+    const path = pts.map((pt, i) => {
+      const x = margin + pt[0]*sx;
+      const y = H_total - margin - pt[1]*sy;
+      return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ') + ' Z';
+    return `<svg viewBox="0 0 ${W} ${H_total}" preserveAspectRatio="xMidYMid meet">
+              <path d="${path}" fill="#d4a373" stroke="#5a3a1a" stroke-width="0.5"/>
+            </svg>`;
+  }
+
+  function selectProfile(code) {
+    activeCode = code;
+    renderGrid();
+    sketchup.set_active_profile(code);
+  }
+
+  function applyProfile() {
+    if (!activeCode) return;
+    const flip = document.getElementById('flip').checked;
+    sketchup.apply_profile(activeCode, flip);
+  }
+
+  function openColors() {
+    sketchup.open_colors();
+  }
+
+  // Ruby'nin yüklemesini bekle
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof sketchup !== 'undefined') sketchup.dialog_ready();
+  });
+</script>
+</body>
+</html>
