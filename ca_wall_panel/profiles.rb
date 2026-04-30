@@ -1,29 +1,32 @@
 # ----------------------------------------------------------------
-#  CA-Wall Panel — Profile Database
+#  CA-Wall Panel — Profile Database (built-in + custom)
 # ----------------------------------------------------------------
-#  Her profil bir hash ile tanımlanır:
-#    :code      → ürün kodu (örn. "18126-46")
-#    :width_mm  → genişlik (kesitin yüzeye paralel boyutu)
-#    :depth_mm  → derinlik (duvardan dışa çıkan boyut, kalınlık)
-#    :length_mm → standart boy (referans, follow-me uzunluğunu çizgi belirler)
-#    :pattern   → :flat | :v_groove | :u_groove | :ribbed | :half_round |
-#                 :double_groove | :wave | :reeded | :louver | :step
-#    :params    → desene özel parametreler (kanal sayısı, derinlik vb.)
+#  Built-in profiller DATA dizisinde tanımlıdır. Kullanıcı diyalogdan
+#  yeni özel profiller ekleyebilir; bunlar Sketchup.write_default ile
+#  saklanır ve `all` çağrısında listeye eklenir.
 #
-#  Kesit, build_profile_points ile parametrik üretilir.
-#  Kesit koordinat sistemi:
-#    - X ekseni: yüzey boyunca (genişlik)
-#    - Y ekseni: derinliğe (duvardan dışarı, +Y dışa)
-#    - Kesit, daha sonra path'in başlangıç noktasına dik düzlemde inşa edilir.
+#  Profil hash alanları:
+#    :code      → ürün kodu (tekil)
+#    :name      → görünen ad
+#    :width_mm  → genişlik (kesitin yüzeye paralel boyutu)
+#    :depth_mm  → derinlik (duvardan dışa çıkan boyut)
+#    :length_mm → standart boy (panel yüksekliği için referans)
+#    :pattern   → :flat | :v_groove | :u_groove | :ribbed |
+#                 :half_round | :double_groove | :reeded | :step | :louver
+#    :params    → desene özel parametreler
+#    :custom    → true ise kullanıcı tanımlı (silinebilir)
 # ----------------------------------------------------------------
+
+require 'json'
+require 'sketchup.rb'
 
 module CAWorks
   module CAWallPanel
     module Profiles
 
-      # ------------------------------------------------------------
-      #  PROFIL VERITABANI
-      # ------------------------------------------------------------
+      DEFAULT_SECTION = 'caworks_ca_wall_panel'.freeze
+      CUSTOM_KEY      = 'custom_profiles_v1'.freeze
+
       DATA = [
         {
           code: '08126-01', name: 'Düz 8x126', width_mm: 126, depth_mm: 8,
@@ -77,14 +80,128 @@ module CAWorks
       ].freeze
 
       # ------------------------------------------------------------
-      #  ARAMA YARDIMCILARI
-      # ------------------------------------------------------------
       def self.all
-        DATA
+        DATA + custom_profiles
       end
 
       def self.find(code)
-        DATA.find { |p| p[:code] == code }
+        all.find { |p| p[:code].to_s == code.to_s }
+      end
+
+      def self.builtin_codes
+        DATA.map { |p| p[:code] }.freeze
+      end
+
+      def self.builtin?(code)
+        builtin_codes.include?(code)
+      end
+
+      # ------------------------------------------------------------
+      #  CUSTOM PROFIL DEPOLAMA
+      # ------------------------------------------------------------
+      def self.custom_profiles
+        json = Sketchup.read_default(DEFAULT_SECTION, CUSTOM_KEY, '[]')
+        arr = JSON.parse(json) rescue []
+        arr.map { |h| symbolize_profile(h) }
+      end
+
+      def self.save_custom(profile)
+        return [false, 'Profil kodu boş olamaz.'] if profile[:code].to_s.strip.empty?
+        return [false, 'Profil adı boş olamaz.']  if profile[:name].to_s.strip.empty?
+        if builtin?(profile[:code])
+          return [false, "Bu kod yerleşik profil ile çakışıyor: #{profile[:code]}"]
+        end
+        return [false, 'Genişlik > 0 olmalı.']      if profile[:width_mm].to_f  <= 0
+        return [false, 'Derinlik > 0 olmalı.']      if profile[:depth_mm].to_f  <= 0
+        return [false, 'Standart boy > 0 olmalı.']  if profile[:length_mm].to_f <= 0
+
+        pattern = profile[:pattern].to_sym rescue :flat
+        cleaned = {
+          code: profile[:code].to_s.strip,
+          name: profile[:name].to_s.strip,
+          width_mm:  profile[:width_mm].to_f,
+          depth_mm:  profile[:depth_mm].to_f,
+          length_mm: profile[:length_mm].to_f,
+          pattern:   pattern,
+          params:    sanitize_params(pattern, profile[:params] || {}),
+          custom:    true
+        }
+
+        list = custom_profiles.reject { |p| p[:code] == cleaned[:code] }
+        list << cleaned
+        write_custom(list)
+        [true, cleaned]
+      end
+
+      def self.delete_custom(code)
+        list = custom_profiles.reject { |p| p[:code] == code.to_s }
+        write_custom(list)
+        true
+      end
+
+      def self.write_custom(list)
+        json = JSON.generate(list.map { |p| stringify_profile(p) })
+        Sketchup.write_default(DEFAULT_SECTION, CUSTOM_KEY, json)
+      end
+
+      def self.symbolize_profile(h)
+        params = h['params'] || {}
+        params_sym = {}
+        params.each { |k, v| params_sym[k.to_sym] = v }
+        {
+          code:      h['code'].to_s,
+          name:      h['name'].to_s,
+          width_mm:  h['width_mm'].to_f,
+          depth_mm:  h['depth_mm'].to_f,
+          length_mm: h['length_mm'].to_f,
+          pattern:   (h['pattern'] || 'flat').to_sym,
+          params:    params_sym,
+          custom:    true
+        }
+      end
+
+      def self.stringify_profile(p)
+        {
+          'code'      => p[:code],
+          'name'      => p[:name],
+          'width_mm'  => p[:width_mm],
+          'depth_mm'  => p[:depth_mm],
+          'length_mm' => p[:length_mm],
+          'pattern'   => p[:pattern].to_s,
+          'params'    => (p[:params] || {}).each_with_object({}) { |(k, v), o| o[k.to_s] = v }
+        }
+      end
+
+      def self.sanitize_params(pattern, params)
+        h = params.each_with_object({}) { |(k, v), o| o[k.to_sym] = v }
+        case pattern
+        when :v_groove
+          { groove_count: 1,
+            groove_width: (h[:groove_width] || 8.0).to_f,
+            groove_depth: (h[:groove_depth] || 4.0).to_f }
+        when :double_groove
+          { groove_count: 2,
+            groove_width:   (h[:groove_width]   || 6.0).to_f,
+            groove_depth:   (h[:groove_depth]   || 3.5).to_f,
+            groove_spacing: (h[:groove_spacing] || 30.0).to_f }
+        when :u_groove
+          { groove_count: 1,
+            groove_width: (h[:groove_width] || 14.0).to_f,
+            groove_depth: (h[:groove_depth] || 5.0).to_f }
+        when :ribbed
+          { rib_count: (h[:rib_count] || 8).to_i,
+            rib_depth: (h[:rib_depth] || 3.0).to_f }
+        when :half_round
+          { radius: (h[:radius] || 6.0).to_f }
+        when :step
+          { step_count: (h[:step_count] || 2).to_i,
+            step_depth: (h[:step_depth] || 6.0).to_f }
+        when :reeded
+          { rib_count:  (h[:rib_count]  || 14).to_i,
+            rib_radius: (h[:rib_radius] || 4.0).to_f }
+        else
+          {}
+        end
       end
 
       # ------------------------------------------------------------
@@ -104,17 +221,14 @@ module CAWorks
         when :half_round    then half_round_points(w, d, profile[:params])
         when :step          then step_points(w, d, profile[:params])
         when :reeded        then reeded_points(w, d, profile[:params])
-        when :louver        then flat_points(w, d) # basit dikdörtgen
+        when :louver        then flat_points(w, d)
         else
           flat_points(w, d)
         end
       end
 
       # ============================================================
-      #  KESİT ÜRETİCİLER (XY düzleminde, sol-alt köşeden başlar)
-      # ============================================================
 
-      # Basit dikdörtgen
       def self.flat_points(w, d)
         [
           Geom::Point3d.new(0, 0, 0),
@@ -124,70 +238,67 @@ module CAWorks
         ]
       end
 
-      # Ortada tek V-kanal
       def self.v_groove_points(w, d, p)
         gw = (p[:groove_width] || 8.0).mm
         gd = (p[:groove_depth] || 4.0).mm
         cx = w / 2.0
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
-        pts << Geom::Point3d.new(cx + gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(cx, d - gd, 0)
-        pts << Geom::Point3d.new(cx - gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(0, d, 0)
-        pts
+        [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0),
+          Geom::Point3d.new(cx + gw / 2.0, d, 0),
+          Geom::Point3d.new(cx, d - gd, 0),
+          Geom::Point3d.new(cx - gw / 2.0, d, 0),
+          Geom::Point3d.new(0, d, 0)
+        ]
       end
 
-      # İki V-kanal
       def self.double_groove_points(w, d, p)
-        gw = (p[:groove_width] || 6.0).mm
-        gd = (p[:groove_depth] || 3.5).mm
+        gw = (p[:groove_width]   || 6.0).mm
+        gd = (p[:groove_depth]   || 3.5).mm
         sp = (p[:groove_spacing] || 30.0).mm
         cx = w / 2.0
         c1 = cx - sp / 2.0
         c2 = cx + sp / 2.0
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
-        pts << Geom::Point3d.new(c2 + gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(c2, d - gd, 0)
-        pts << Geom::Point3d.new(c2 - gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(c1 + gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(c1, d - gd, 0)
-        pts << Geom::Point3d.new(c1 - gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(0, d, 0)
-        pts
+        [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0),
+          Geom::Point3d.new(c2 + gw / 2.0, d, 0),
+          Geom::Point3d.new(c2, d - gd, 0),
+          Geom::Point3d.new(c2 - gw / 2.0, d, 0),
+          Geom::Point3d.new(c1 + gw / 2.0, d, 0),
+          Geom::Point3d.new(c1, d - gd, 0),
+          Geom::Point3d.new(c1 - gw / 2.0, d, 0),
+          Geom::Point3d.new(0, d, 0)
+        ]
       end
 
-      # U-kanal (dik kenarlı kanal)
       def self.u_groove_points(w, d, p)
         gw = (p[:groove_width] || 14.0).mm
         gd = (p[:groove_depth] || 5.0).mm
         cx = w / 2.0
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
-        pts << Geom::Point3d.new(cx + gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(cx + gw / 2.0, d - gd, 0)
-        pts << Geom::Point3d.new(cx - gw / 2.0, d - gd, 0)
-        pts << Geom::Point3d.new(cx - gw / 2.0, d, 0)
-        pts << Geom::Point3d.new(0, d, 0)
-        pts
+        [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0),
+          Geom::Point3d.new(cx + gw / 2.0, d, 0),
+          Geom::Point3d.new(cx + gw / 2.0, d - gd, 0),
+          Geom::Point3d.new(cx - gw / 2.0, d - gd, 0),
+          Geom::Point3d.new(cx - gw / 2.0, d, 0),
+          Geom::Point3d.new(0, d, 0)
+        ]
       end
 
-      # Çoklu yiv (rib_count adet eşit aralıklı V-yiv)
       def self.ribbed_points(w, d, p)
-        n  = p[:rib_count] || 8
+        n  = (p[:rib_count] || 8).to_i
         rd = (p[:rib_depth] || 3.0).mm
         seg = w / n.to_f
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
+        pts = [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0)
+        ]
         (1...n).each do |i|
           x = w - i * seg
           pts << Geom::Point3d.new(x + seg / 2.0, d, 0)
@@ -198,7 +309,6 @@ module CAWorks
         pts
       end
 
-      # Yarım yuvarlak (kabarık)
       def self.half_round_points(w, d, p)
         r  = (p[:radius] || 6.0).mm
         seg = 16
@@ -218,17 +328,17 @@ module CAWorks
         pts
       end
 
-      # Step (kademeli kanal)
       def self.step_points(w, d, p)
-        sc = p[:step_count] || 2
+        sc = (p[:step_count] || 2).to_i
         sd = (p[:step_depth] || 6.0).mm
         cx = w / 2.0
         step_total = w * 0.5
         sw = step_total / sc.to_f
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
+        pts = [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0)
+        ]
         sc.times do |i|
           x_outer = cx + step_total / 2.0 - i * sw
           y       = d - i * sd
@@ -248,17 +358,17 @@ module CAWorks
         pts
       end
 
-      # Reeded (yarım daire çubuklar)
       def self.reeded_points(w, d, p)
-        n  = p[:rib_count] || 14
+        n  = (p[:rib_count]  || 14).to_i
         rr = (p[:rib_radius] || 4.0).mm
         seg_per_rib = 8
         rib_w = w / n.to_f
         actual_r = [rib_w / 2.0, rr].min
-        pts = []
-        pts << Geom::Point3d.new(0, 0, 0)
-        pts << Geom::Point3d.new(w, 0, 0)
-        pts << Geom::Point3d.new(w, d, 0)
+        pts = [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0)
+        ]
         (n - 1).downto(0) do |i|
           cx = (i + 0.5) * rib_w
           seg_per_rib.times do |k|

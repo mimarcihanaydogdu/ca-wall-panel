@@ -6,7 +6,10 @@ require 'json'
 require 'sketchup.rb'
 
 require File.join(File.dirname(__FILE__), 'profiles')
+require File.join(File.dirname(__FILE__), 'components')
 require File.join(File.dirname(__FILE__), 'apply_tool')
+require File.join(File.dirname(__FILE__), 'draw_tool')
+require File.join(File.dirname(__FILE__), 'metraj')
 require File.join(File.dirname(__FILE__), 'colorize_tool')
 require File.join(File.dirname(__FILE__), 'updater')
 
@@ -26,33 +29,92 @@ module CAWorks
     # ------------------------------------------------------------
     #  PROFİL SEÇİM DİYALOĞU
     # ------------------------------------------------------------
-    def self.show_profile_dialog
-      if @profile_dialog && @profile_dialog.visible?
+    def self.show_profile_dialog(edit_run: nil)
+      build_profile_dialog if @profile_dialog.nil?
+
+      if @profile_dialog.visible?
         @profile_dialog.bring_to_front
-        return
+      else
+        @profile_dialog.show
       end
 
+      send_profiles_to_dialog
+      @profile_dialog.execute_script(
+        "setDefaultHeight(#{ApplyTool.last_height_mm.to_f});"
+      )
+
+      if edit_run
+        ApplyTool.editing_run = edit_run
+        edit_state = {
+          run_name:     edit_run.name.to_s,
+          profile_code: edit_run.get_attribute(ApplyTool::ATTR_DICT, 'profile_code').to_s,
+          height_mm:    edit_run.get_attribute(ApplyTool::ATTR_DICT, 'height_mm').to_f,
+          flip:         edit_run.get_attribute(ApplyTool::ATTR_DICT, 'flip') == true
+        }
+        @profile_dialog.execute_script(
+          "setEditMode(#{edit_state.to_json.inspect});"
+        )
+      end
+    end
+
+    def self.send_profiles_to_dialog
+      return unless @profile_dialog
+      json = profiles_for_js.to_json
+      @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
+    end
+
+    def self.profiles_for_js
+      Profiles.all.map do |p|
+        params_h = (p[:params] || {}).each_with_object({}) { |(k, v), o| o[k.to_s] = v }
+        {
+          code:      p[:code],
+          name:      p[:name],
+          width_mm:  p[:width_mm].to_f,
+          depth_mm:  p[:depth_mm].to_f,
+          length_mm: p[:length_mm].to_f,
+          pattern:   p[:pattern].to_s,
+          params:    params_h,
+          custom:    p[:custom] == true
+        }
+      end
+    end
+
+    def self.build_profile_dialog
       html_path = File.join(File.dirname(__FILE__), 'dialog.html')
 
       @profile_dialog = UI::HtmlDialog.new(
-        dialog_title:   'CA-Wall Panel',
+        dialog_title:    'CA-Wall Panel',
         preferences_key: 'caworks_ca_wall_panel',
-        scrollable:     true,
-        resizable:      true,
-        width:          440,
-        height:         680,
-        min_width:      320,
-        min_height:     460,
-        style:          UI::HtmlDialog::STYLE_DIALOG
+        scrollable:      true,
+        resizable:       true,
+        width:           480,
+        height:          760,
+        min_width:       360,
+        min_height:      500,
+        style:           UI::HtmlDialog::STYLE_DIALOG
       )
       @profile_dialog.set_file(html_path)
 
       @profile_dialog.add_action_callback('dialog_ready') do |_ctx|
-        json = Profiles.all.to_json
-        @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
+        send_profiles_to_dialog
         @profile_dialog.execute_script(
           "setDefaultHeight(#{ApplyTool.last_height_mm.to_f});"
         )
+        if (run = ApplyTool.editing_run)
+          if run.respond_to?(:valid?) && run.valid?
+            edit_state = {
+              run_name:     run.name.to_s,
+              profile_code: run.get_attribute(ApplyTool::ATTR_DICT, 'profile_code').to_s,
+              height_mm:    run.get_attribute(ApplyTool::ATTR_DICT, 'height_mm').to_f,
+              flip:         run.get_attribute(ApplyTool::ATTR_DICT, 'flip') == true
+            }
+            @profile_dialog.execute_script(
+              "setEditMode(#{edit_state.to_json.inspect});"
+            )
+          else
+            ApplyTool.editing_run = nil
+          end
+        end
       end
 
       @profile_dialog.add_action_callback('set_active_profile') do |_ctx, code|
@@ -65,11 +127,78 @@ module CAWorks
         ApplyTool.run(height_mm.to_f)
       end
 
+      @profile_dialog.add_action_callback('update_run') do |_ctx, code, flip, height_mm|
+        run = ApplyTool.editing_run
+        if run.nil? || !run.respond_to?(:valid?) || !run.valid?
+          UI.messagebox("Düzenlenecek hat seçili değil.")
+        else
+          profile = Profiles.find(code) || Profiles.all.first
+          ApplyTool.regenerate_run(run, profile, height_mm.to_f, flip)
+        end
+        ApplyTool.editing_run = nil
+        @profile_dialog.execute_script("cancelEdit();") if @profile_dialog
+      end
+
+      @profile_dialog.add_action_callback('cancel_edit') do |_ctx|
+        ApplyTool.editing_run = nil
+      end
+
+      @profile_dialog.add_action_callback('draw_with_profile') do |_ctx, code, flip, height_mm|
+        ApplyTool.active_profile_code = code
+        ApplyTool.flip_orientation    = flip
+        ApplyTool.last_height_mm      = height_mm.to_f
+        Sketchup.active_model.select_tool(
+          DrawTool.new(height_mm: height_mm.to_f, flip: flip)
+        )
+      end
+
+      @profile_dialog.add_action_callback('edit_selected') do |_ctx|
+        run = ApplyTool.find_selected_run
+        if run.nil?
+          UI.messagebox(
+            "Düzenlemek için modelden bir Lambri Hattı seçin.\n" \
+            "(Sağ-tık → Edit ile içine değil; bir kez tıklayarak grup olarak seçin.)"
+          )
+        else
+          show_profile_dialog(edit_run: run)
+        end
+      end
+
+      @profile_dialog.add_action_callback('open_metraj') do |_ctx|
+        Metraj.show
+      end
+
       @profile_dialog.add_action_callback('open_colors') do |_ctx|
         show_color_dialog
       end
 
-      @profile_dialog.show
+      @profile_dialog.add_action_callback('save_custom_profile') do |_ctx, json_str|
+        data = JSON.parse(json_str) rescue {}
+        sym  = {
+          code:      data['code'],
+          name:      data['name'],
+          width_mm:  data['width_mm'],
+          depth_mm:  data['depth_mm'],
+          length_mm: data['length_mm'],
+          pattern:   (data['pattern'] || 'flat').to_sym,
+          params:    (data['params']  || {})
+        }
+        ok, payload = Profiles.save_custom(sym)
+        if ok
+          send_profiles_to_dialog
+          result = { ok: true,
+                     message: "Özel profil kaydedildi: #{payload[:code]}",
+                     profile_code: payload[:code] }
+        else
+          result = { ok: false, message: payload.to_s }
+        end
+        @profile_dialog.execute_script("customSaveResult(#{result.to_json.inspect});")
+      end
+
+      @profile_dialog.add_action_callback('delete_custom_profile') do |_ctx, code|
+        Profiles.delete_custom(code)
+        send_profiles_to_dialog
+      end
     end
 
     # ------------------------------------------------------------
@@ -84,15 +213,15 @@ module CAWorks
       html_path = File.join(File.dirname(__FILE__), 'colors.html')
 
       @color_dialog = UI::HtmlDialog.new(
-        dialog_title:   'CA-Wall Panel Renkler',
+        dialog_title:    'CA-Wall Panel Renkler',
         preferences_key: 'caworks_ca_wall_panel_colors',
-        scrollable:     true,
-        resizable:      true,
-        width:          340,
-        height:         520,
-        min_width:      260,
-        min_height:     320,
-        style:          UI::HtmlDialog::STYLE_DIALOG
+        scrollable:      true,
+        resizable:       true,
+        width:           340,
+        height:          520,
+        min_width:       260,
+        min_height:      320,
+        style:           UI::HtmlDialog::STYLE_DIALOG
       )
       @color_dialog.set_file(html_path)
 
@@ -113,24 +242,50 @@ module CAWorks
     end
 
     # ------------------------------------------------------------
+    #  KISAYOL: Düzenle / Çiz / Metraj
+    # ------------------------------------------------------------
+    def self.start_draw_tool
+      Sketchup.active_model.select_tool(
+        DrawTool.new(
+          height_mm: ApplyTool.last_height_mm,
+          flip:      ApplyTool.flip_orientation
+        )
+      )
+    end
+
+    def self.edit_selected_run
+      run = ApplyTool.find_selected_run
+      if run.nil?
+        UI.messagebox("Düzenlemek için modelden bir Lambri Hattı seçin.")
+        return
+      end
+      show_profile_dialog(edit_run: run)
+    end
+
+    # ------------------------------------------------------------
     #  MENÜ + TOOLBAR
     # ------------------------------------------------------------
     unless file_loaded?(__FILE__)
       menu = UI.menu('Plugins').add_submenu('CA-Wall Panel')
       menu.add_item('Profil Seç ve Uygula') { show_profile_dialog }
-      menu.add_item('Renklendir')           { show_color_dialog   }
+      menu.add_item('Kalem ile Çiz')        { start_draw_tool }
+      menu.add_item("Lambri'yi Düzenle")    { edit_selected_run }
+      menu.add_item('Metraj')               { Metraj.show }
+      menu.add_item('Renklendir')           { show_color_dialog }
       menu.add_separator
       menu.add_item('Güncelle Plugini')     { Updater.update_now! }
       menu.add_item('Hakkında') do
         UI.messagebox(
           "CA-Wall Panel v#{PLUGIN_VERSION}\n\n" \
           "ca//works · Cihan Aydoğdu Mimarlık\n\n" \
-          "Kullanım:\n" \
-          "1) 'Profil Seç ve Uygula' menüsünden bir profil seçin.\n" \
-          "2) Diyalogdan panel yüksekliğini girin.\n" \
-          "3) SketchUp'ta uygulamak istediğiniz çizgi/yay/daire/curve'ü seçin.\n" \
-          "4) 'Uygula' butonuna basın — paneller yan yana dik dizilir.\n" \
-          "5) Renklendirmek için panel grubunu seçip 'Renklendir' menüsünü açın."
+          "Yenilikler (0.3.0):\n" \
+          " · Paneller Component Instance — definition'a girip değişiklik\n" \
+          "   yaparsanız tüm paneller birlikte güncellenir.\n" \
+          " · Eğri/yayda tam uç-uca dizilim (chord-tabanlı yürüyüş).\n" \
+          " · Kalem aracı ile doğrudan çizip uygulama.\n" \
+          " · Lambri'yi Düzenle: seçili hattı yeni profil/yükseklik ile yeniden üret.\n" \
+          " · Metraj raporu (HTML, Yazdır → PDF).\n" \
+          " · Özel profil ekleme/silme."
         )
       end
 
@@ -147,6 +302,21 @@ module CAWorks
         cmd1.small_icon = icon1
       end
       tb.add_item(cmd1)
+
+      cmd_draw = UI::Command.new('Kalem ile Çiz') { start_draw_tool }
+      cmd_draw.tooltip         = 'Kalem aracı — tıklayarak yol çiz, paneller anında yerleşir'
+      cmd_draw.status_bar_text = 'Sol tık: nokta · Enter/Sağ tık: bitir · Esc: iptal'
+      tb.add_item(cmd_draw)
+
+      cmd_edit = UI::Command.new("Lambri'yi Düzenle") { edit_selected_run }
+      cmd_edit.tooltip         = 'Seçili Lambri Hattı için profil/yükseklik değiştir'
+      cmd_edit.status_bar_text = 'Bir Lambri Hattı seçip Düzenle ile yeniden üret'
+      tb.add_item(cmd_edit)
+
+      cmd_metraj = UI::Command.new('Metraj') { Metraj.show }
+      cmd_metraj.tooltip         = 'Modeldeki tüm Lambri Hatlarının metraj raporu'
+      cmd_metraj.status_bar_text = 'Profil bazlı toplam panel, alan ve fire listesi'
+      tb.add_item(cmd_metraj)
 
       cmd2 = UI::Command.new('Renklendir') { show_color_dialog }
       cmd2.tooltip         = 'Yerleştirilmiş CA-Wall Panel grubunu renklendir'

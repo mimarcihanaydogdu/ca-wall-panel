@@ -12,45 +12,26 @@
     font-size: 12px;
   }
   h2 { margin: 0 0 4px; font-size: 14px; }
-  .sub { color: #666; margin-bottom: 12px; font-size: 11px; }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 8px;
-    margin-bottom: 12px;
+  h3 { margin: 12px 0 6px; font-size: 12px; color: #555; }
+  .sub { color: #666; margin-bottom: 10px; font-size: 11px; }
+
+  .edit-banner {
+    background: #e8f5ff; border: 1px solid #7cc7ff; color: #003a66;
+    padding: 6px 10px; border-radius: 4px; margin-bottom: 10px;
+    font-size: 11px; display: none;
   }
-  .card {
-    background: #fff; border: 2px solid #ddd; border-radius: 6px;
-    padding: 8px; cursor: pointer; text-align: center;
-    transition: all 0.12s;
+  .edit-banner.visible { display: block; }
+  .edit-banner button {
+    background: #555; color: #fff; border: none; padding: 3px 8px;
+    border-radius: 3px; font-size: 10px; cursor: pointer; margin-left: 6px;
   }
-  .card:hover { border-color: #999; }
-  .card.active { border-color: #f5a623; background: #fffaf0; }
-  .card svg { width: 100%; height: 48px; display: block; }
-  .card .code { font-weight: 600; margin-top: 4px; font-size: 11px; }
-  .card .dim { color: #888; font-size: 10px; }
-  .actions {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    border-top: 1px solid #ddd; padding-top: 10px;
-  }
-  button {
-    flex: 1; min-width: 90px;
-    padding: 8px 10px; font-size: 12px;
-    background: #f5a623; color: #fff; border: none; border-radius: 4px;
-    cursor: pointer; font-weight: 600;
-  }
-  button:hover { background: #d98e0a; }
-  button.secondary { background: #555; }
-  button.secondary:hover { background: #333; }
+
   .hint {
     background: #fffbe6; border: 1px solid #f5d76e;
     padding: 6px 8px; border-radius: 4px; margin-bottom: 10px;
     font-size: 11px; color: #6a4f00;
   }
-  .checkbox-row {
-    display: flex; align-items: center; gap: 6px;
-    margin-bottom: 10px; font-size: 11px;
-  }
+
   .height-row {
     background: #fff; border: 1px solid #ddd; border-radius: 6px;
     padding: 8px 10px; margin-bottom: 10px;
@@ -62,26 +43,116 @@
     border: 1px solid #bbb; border-radius: 3px; font-size: 12px;
   }
   .unit { font-size: 11px; color: #666; }
-  .profile-len-info {
-    color: #666; font-size: 11px; margin-left: auto;
+  .profile-len-info { color: #666; font-size: 11px; margin-left: auto; }
+
+  .checkbox-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 10px; font-size: 11px;
   }
+
   .warn {
     width: 100%;
     background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15;
     padding: 4px 8px; border-radius: 3px; font-size: 11px;
     margin-top: 4px;
   }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .card {
+    background: #fff; border: 2px solid #ddd; border-radius: 6px;
+    padding: 8px; cursor: pointer; text-align: center;
+    transition: all 0.12s;
+    position: relative;
+  }
+  .card:hover { border-color: #999; }
+  .card.active { border-color: #f5a623; background: #fffaf0; }
+  .card svg { width: 100%; height: 48px; display: block; }
+  .card .code { font-weight: 600; margin-top: 4px; font-size: 11px; }
+  .card .dim { color: #888; font-size: 10px; }
+  .card.custom { border-style: dashed; }
+  .card .badge {
+    position: absolute; top: 2px; left: 4px;
+    font-size: 9px; color: #b56a00; font-weight: 700;
+  }
+  .card .delx {
+    position: absolute; top: 2px; right: 4px;
+    background: #fdecea; color: #7a1f15;
+    border: 1px solid #f5b3ad; border-radius: 50%;
+    width: 16px; height: 16px; line-height: 13px; font-size: 10px;
+    cursor: pointer; padding: 0; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .card .delx:hover { background: #f5b3ad; }
+
+  .actions {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    border-top: 1px solid #ddd; padding-top: 10px;
+  }
+  button {
+    flex: 1; min-width: 80px;
+    padding: 8px 10px; font-size: 12px;
+    background: #f5a623; color: #fff; border: none; border-radius: 4px;
+    cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #d98e0a; }
+  button.secondary { background: #555; }
+  button.secondary:hover { background: #333; }
+  button.tertiary { background: #888; }
+  button.tertiary:hover { background: #666; }
+
+  details.section {
+    background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 6px 10px; margin-bottom: 10px;
+  }
+  details.section summary {
+    font-weight: 600; font-size: 12px; cursor: pointer;
+    color: #555;
+  }
+  details[open].section { padding-bottom: 10px; }
+
+  .form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px;
+    margin-top: 8px;
+  }
+  .form-grid label { font-size: 11px; color: #444; }
+  .form-grid input, .form-grid select {
+    width: 100%; padding: 4px 6px;
+    border: 1px solid #bbb; border-radius: 3px; font-size: 12px;
+  }
+  .form-row-full { grid-column: 1 / -1; }
+  .form-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .form-actions button { flex: 0 0 auto; min-width: 80px; padding: 6px 10px; }
+  .params-help {
+    font-size: 10px; color: #888; margin-top: 4px;
+  }
+  .form-status {
+    margin-top: 6px; padding: 4px 8px; border-radius: 3px; font-size: 11px;
+    display: none;
+  }
+  .form-status.ok   { background: #e8f5e8; border: 1px solid #a8d8a8; color: #1f5c1f; display:block; }
+  .form-status.err  { background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15; display:block; }
 </style>
 </head>
 <body>
 
 <h2>CA-Wall Panel</h2>
-<div class="sub">ca//works · Profil seç → yükseklik gir → çizgi seç → Uygula</div>
+<div class="sub">ca//works · Profil seç → yükseklik gir → çizgi seç ya da Çiz</div>
+
+<div class="edit-banner" id="editBanner">
+  <strong>Düzenleme modu:</strong> <span id="editName"></span>
+  <button onclick="cancelEdit()">İptal</button>
+</div>
 
 <div class="hint">
-  <strong>Kullanım:</strong> Bir profil seçin ve panel yüksekliğini girin.
-  SketchUp'ta uygulamak istediğiniz çizgi/yay/daire/curve'ü seçin — paneller
-  bu hat boyunca yan yana dik dizilecektir. Ardından <em>Uygula</em>'ya basın.
+  <strong>Kullanım:</strong> Profil ve panel yüksekliğini girin.
+  <em>Uygula</em>: SketchUp'ta seçili çizgi/yay/curve'e uygular.
+  <em>Çiz</em>: ekrandan tıklayarak yol çizip uygular.
+  <em>Düzenle</em>: seçili Lambri Hattı'nı bu ayarlarla yeniden üretir.
 </div>
 
 <div class="height-row">
@@ -98,18 +169,64 @@
 
 <div class="grid" id="profileGrid"></div>
 
+<details class="section" id="customSection">
+  <summary>+ Özel Profil Ekle</summary>
+  <div class="form-grid">
+    <label>Kod
+      <input type="text" id="cp_code" placeholder="ÖZEL-001">
+    </label>
+    <label>Ad
+      <input type="text" id="cp_name" placeholder="Özel Lambri">
+    </label>
+    <label>Genişlik (mm)
+      <input type="number" id="cp_w" value="126" min="1" step="1">
+    </label>
+    <label>Derinlik (mm)
+      <input type="number" id="cp_d" value="18" min="1" step="0.5">
+    </label>
+    <label>Standart Boy (mm)
+      <input type="number" id="cp_l" value="2800" min="100" step="10">
+    </label>
+    <label>Desen
+      <select id="cp_pat" onchange="renderParamFields()">
+        <option value="flat">Düz</option>
+        <option value="v_groove">V-Kanal (tek)</option>
+        <option value="double_groove">Çift V-Kanal</option>
+        <option value="u_groove">U-Kanal</option>
+        <option value="ribbed">Çoklu Yiv</option>
+        <option value="half_round">Yarım Yuvarlak</option>
+        <option value="step">Step (Kademe)</option>
+        <option value="reeded">Reeded</option>
+      </select>
+    </label>
+    <div class="form-row-full" id="paramFields"></div>
+  </div>
+  <div class="form-actions">
+    <button onclick="saveCustomProfile()">Kaydet</button>
+    <button class="tertiary" onclick="resetCustomForm()">Temizle</button>
+  </div>
+  <div class="form-status" id="cpStatus"></div>
+</details>
+
 <div class="actions">
-  <button onclick="applyProfile()">✓ Uygula</button>
-  <button class="secondary" onclick="openColors()">🎨 Renk</button>
+  <button id="applyBtn" onclick="applyProfile()">✓ Uygula</button>
+  <button class="secondary" onclick="drawWithTool()">✏ Çiz</button>
+  <button class="secondary" onclick="editSelected()">⟳ Düzenle</button>
+  <button class="tertiary" onclick="openMetraj()">📊 Metraj</button>
+  <button class="tertiary" onclick="openColors()">🎨 Renk</button>
 </div>
 
 <script>
   let activeCode = null;
   let profiles = [];
+  let editing = null;     // { run_token, run_name, profile_code, height_mm, flip }
 
+  // ------------------ INIT ------------------
   function loadProfiles(json) {
     profiles = JSON.parse(json);
-    activeCode = profiles[0] ? profiles[0].code : null;
+    if (!activeCode || !profiles.find(p => p.code === activeCode)) {
+      activeCode = profiles[0] ? profiles[0].code : null;
+    }
     renderGrid();
     updateProfileLenInfo();
     validateHeight();
@@ -121,21 +238,58 @@
     validateHeight();
   }
 
+  function setEditMode(json) {
+    editing = JSON.parse(json);
+    document.getElementById('editBanner').classList.add('visible');
+    document.getElementById('editName').textContent = editing.run_name || '(seçili hat)';
+    if (editing.profile_code) {
+      activeCode = editing.profile_code;
+      renderGrid();
+      updateProfileLenInfo();
+    }
+    if (editing.height_mm)  document.getElementById('height').value = editing.height_mm;
+    document.getElementById('flip').checked = !!editing.flip;
+    document.getElementById('applyBtn').textContent = '✓ Güncelle';
+    validateHeight();
+  }
+
+  function cancelEdit() {
+    editing = null;
+    document.getElementById('editBanner').classList.remove('visible');
+    document.getElementById('applyBtn').textContent = '✓ Uygula';
+    sketchup.cancel_edit();
+  }
+
+  // ------------------ PROFILES GRID ------------------
   function renderGrid() {
     const grid = document.getElementById('profileGrid');
     grid.innerHTML = '';
     profiles.forEach(p => {
       const card = document.createElement('div');
-      card.className = 'card' + (p.code === activeCode ? ' active' : '');
-      card.onclick = () => selectProfile(p.code);
+      card.className = 'card' + (p.code === activeCode ? ' active' : '') +
+                       (p.custom ? ' custom' : '');
+      card.onclick = (ev) => {
+        if (ev.target.classList.contains('delx')) return;
+        selectProfile(p.code);
+      };
+      const badge = p.custom ? '<div class="badge">ÖZEL</div>' : '';
+      const delx  = p.custom ?
+        `<button class="delx" onclick="deleteCustom('${escAttr(p.code)}')" title="Sil">×</button>` : '';
       card.innerHTML = `
+        ${badge}${delx}
         ${profileSVG(p)}
-        <div class="code">${p.code}</div>
+        <div class="code">${escHtml(p.code)}</div>
         <div class="dim">${p.width_mm}×${p.depth_mm}mm</div>
       `;
       grid.appendChild(card);
     });
   }
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"]/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+  function escAttr(s) { return escHtml(s).replace(/'/g, '&#39;'); }
 
   function profileSVG(p) {
     const W = 100, H = 40;
@@ -144,47 +298,46 @@
     const sy = Math.min((H - 8) / Math.max(d, 8), sx * 1.5);
     let pts;
     switch(p.pattern) {
-      case 'flat':
-        pts = [[0,0],[w,0],[w,d],[0,d]]; break;
+      case 'flat': pts = [[0,0],[w,0],[w,d],[0,d]]; break;
       case 'v_groove': {
-        const gw = p.params.groove_width || 8, gd = p.params.groove_depth || 4;
+        const gw = (p.params && p.params.groove_width) || 8;
+        const gd = (p.params && p.params.groove_depth) || 4;
         const cx = w/2;
         pts = [[0,0],[w,0],[w,d],[cx+gw/2,d],[cx,d-gd],[cx-gw/2,d],[0,d]];
         break;
       }
       case 'double_groove': {
-        const gw = p.params.groove_width || 6, gd = p.params.groove_depth || 3.5;
-        const sp = p.params.groove_spacing || 30;
+        const gw = (p.params && p.params.groove_width) || 6;
+        const gd = (p.params && p.params.groove_depth) || 3.5;
+        const sp = (p.params && p.params.groove_spacing) || 30;
         const cx = w/2, c1 = cx-sp/2, c2 = cx+sp/2;
         pts = [[0,0],[w,0],[w,d],
                [c2+gw/2,d],[c2,d-gd],[c2-gw/2,d],
-               [c1+gw/2,d],[c1,d-gd],[c1-gw/2,d],
-               [0,d]];
+               [c1+gw/2,d],[c1,d-gd],[c1-gw/2,d],[0,d]];
         break;
       }
       case 'u_groove': {
-        const gw = p.params.groove_width || 14, gd = p.params.groove_depth || 5;
+        const gw = (p.params && p.params.groove_width) || 14;
+        const gd = (p.params && p.params.groove_depth) || 5;
         const cx = w/2;
         pts = [[0,0],[w,0],[w,d],
-               [cx+gw/2,d],[cx+gw/2,d-gd],[cx-gw/2,d-gd],[cx-gw/2,d],
-               [0,d]];
+               [cx+gw/2,d],[cx+gw/2,d-gd],[cx-gw/2,d-gd],[cx-gw/2,d],[0,d]];
         break;
       }
       case 'ribbed': {
-        const n = p.params.rib_count || 8, rd = p.params.rib_depth || 3;
+        const n  = (p.params && p.params.rib_count) || 8;
+        const rd = (p.params && p.params.rib_depth) || 3;
         const seg = w/n;
         pts = [[0,0],[w,0],[w,d]];
         for (let i = 1; i < n; i++) {
           const x = w - i*seg;
-          pts.push([x+seg/2, d]);
-          pts.push([x, d-rd]);
+          pts.push([x+seg/2, d]); pts.push([x, d-rd]);
         }
-        pts.push([seg/2, d]);
-        pts.push([0, d]);
+        pts.push([seg/2, d]); pts.push([0, d]);
         break;
       }
       case 'half_round': {
-        const r = p.params.radius || 6;
+        const r = (p.params && p.params.radius) || 6;
         pts = [[0,0],[w,0],[w,d]];
         const seg = 12;
         for (let i = 0; i <= seg; i++) {
@@ -195,7 +348,8 @@
         break;
       }
       case 'step': {
-        const sc = p.params.step_count || 2, sd = p.params.step_depth || 6;
+        const sc = (p.params && p.params.step_count) || 2;
+        const sd = (p.params && p.params.step_depth) || 6;
         const cx = w/2, total = w*0.5, sw = total/sc;
         pts = [[0,0],[w,0],[w,d]];
         for (let i = 0; i < sc; i++) {
@@ -215,7 +369,8 @@
         break;
       }
       case 'reeded': {
-        const n = p.params.rib_count || 14, rr = p.params.rib_radius || 4;
+        const n  = (p.params && p.params.rib_count)  || 14;
+        const rr = (p.params && p.params.rib_radius) || 4;
         const rw = w/n, ar = Math.min(rw/2, rr);
         pts = [[0,0],[w,0],[w,d]];
         for (let i = n-1; i >= 0; i--) {
@@ -229,17 +384,15 @@
         pts.push([0, d]);
         break;
       }
-      default:
-        pts = [[0,0],[w,0],[w,d],[0,d]];
+      default: pts = [[0,0],[w,0],[w,d],[0,d]];
     }
-    const H_total = H;
     const margin = 2;
     const path = pts.map((pt, i) => {
       const x = margin + pt[0]*sx;
-      const y = H_total - margin - pt[1]*sy;
+      const y = H - margin - pt[1]*sy;
       return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
     }).join(' ') + ' Z';
-    return `<svg viewBox="0 0 ${W} ${H_total}" preserveAspectRatio="xMidYMid meet">
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
               <path d="${path}" fill="#d4a373" stroke="#5a3a1a" stroke-width="0.5"/>
             </svg>`;
   }
@@ -252,14 +405,12 @@
     sketchup.set_active_profile(code);
   }
 
-  function activeProfile() {
-    return profiles.find(x => x.code === activeCode);
-  }
+  function activeProfile() { return profiles.find(x => x.code === activeCode); }
 
   function updateProfileLenInfo() {
     const p = activeProfile();
-    const el = document.getElementById('profileLenInfo');
-    el.textContent = p ? `Standart boy: ${p.length_mm}mm` : 'Standart boy: —';
+    document.getElementById('profileLenInfo').textContent =
+      p ? `Standart boy: ${p.length_mm}mm` : 'Standart boy: —';
   }
 
   function validateHeight() {
@@ -274,22 +425,143 @@
     }
   }
 
+  // ------------------ ACTIONS ------------------
+  function readState() {
+    return {
+      code: activeCode,
+      flip: document.getElementById('flip').checked,
+      h:    parseFloat(document.getElementById('height').value)
+    };
+  }
+
   function applyProfile() {
-    if (!activeCode) return;
-    const flip = document.getElementById('flip').checked;
-    const h = parseFloat(document.getElementById('height').value);
-    if (!h || h <= 0) {
-      alert('Geçerli bir yükseklik girin.');
-      return;
+    const s = readState();
+    if (!s.code)            { alert('Bir profil seçin.'); return; }
+    if (!s.h || s.h <= 0)   { alert('Geçerli bir yükseklik girin.'); return; }
+    if (editing) {
+      sketchup.update_run(s.code, s.flip, s.h);
+    } else {
+      sketchup.apply_profile(s.code, s.flip, s.h);
     }
-    sketchup.apply_profile(activeCode, flip, h);
   }
 
-  function openColors() {
-    sketchup.open_colors();
+  function drawWithTool() {
+    const s = readState();
+    if (!s.code)          { alert('Bir profil seçin.'); return; }
+    if (!s.h || s.h <= 0) { alert('Geçerli bir yükseklik girin.'); return; }
+    sketchup.draw_with_profile(s.code, s.flip, s.h);
   }
 
+  function editSelected() { sketchup.edit_selected(); }
+  function openColors()   { sketchup.open_colors(); }
+  function openMetraj()   { sketchup.open_metraj(); }
+
+  // ------------------ CUSTOM PROFILE FORM ------------------
+  function renderParamFields() {
+    const pat = document.getElementById('cp_pat').value;
+    const div = document.getElementById('paramFields');
+    let html = '';
+    const f = (id, label, val, step) =>
+      `<label style="display:inline-block;margin-right:8px;font-size:11px;">
+         ${label}
+         <input type="number" id="${id}" value="${val}" step="${step||0.5}" style="width:70px;">
+       </label>`;
+    switch(pat) {
+      case 'v_groove':
+        html = f('cp_p_gw','Yiv Genişliği (mm)',8,0.5)+f('cp_p_gd','Yiv Derinliği (mm)',4,0.5);
+        break;
+      case 'double_groove':
+        html = f('cp_p_gw','Yiv Gen. (mm)',6,0.5)+f('cp_p_gd','Yiv Der. (mm)',3.5,0.5)+
+               f('cp_p_sp','Yiv Aralığı (mm)',30,1);
+        break;
+      case 'u_groove':
+        html = f('cp_p_gw','Yiv Gen. (mm)',14,0.5)+f('cp_p_gd','Yiv Der. (mm)',5,0.5);
+        break;
+      case 'ribbed':
+        html = f('cp_p_n','Yiv Sayısı',8,1)+f('cp_p_rd','Yiv Der. (mm)',3,0.5);
+        break;
+      case 'half_round':
+        html = f('cp_p_r','Yarıçap (mm)',6,0.5);
+        break;
+      case 'step':
+        html = f('cp_p_sc','Kademe Sayısı',2,1)+f('cp_p_sd','Kademe Der. (mm)',6,0.5);
+        break;
+      case 'reeded':
+        html = f('cp_p_n','Yiv Sayısı',14,1)+f('cp_p_rr','Yiv Yarıçap (mm)',4,0.5);
+        break;
+      default:
+        html = '<div class="params-help">Bu desen için ek parametre yok.</div>';
+    }
+    div.innerHTML = html;
+  }
+
+  function readCustomForm() {
+    const pat = document.getElementById('cp_pat').value;
+    const params = {};
+    const num = id => parseFloat(document.getElementById(id) ? document.getElementById(id).value : 0);
+    switch(pat) {
+      case 'v_groove':
+        params.groove_width = num('cp_p_gw'); params.groove_depth = num('cp_p_gd'); break;
+      case 'double_groove':
+        params.groove_width = num('cp_p_gw'); params.groove_depth = num('cp_p_gd');
+        params.groove_spacing = num('cp_p_sp'); break;
+      case 'u_groove':
+        params.groove_width = num('cp_p_gw'); params.groove_depth = num('cp_p_gd'); break;
+      case 'ribbed':
+        params.rib_count = num('cp_p_n'); params.rib_depth = num('cp_p_rd'); break;
+      case 'half_round':
+        params.radius = num('cp_p_r'); break;
+      case 'step':
+        params.step_count = num('cp_p_sc'); params.step_depth = num('cp_p_sd'); break;
+      case 'reeded':
+        params.rib_count = num('cp_p_n'); params.rib_radius = num('cp_p_rr'); break;
+    }
+    return {
+      code:      document.getElementById('cp_code').value.trim(),
+      name:      document.getElementById('cp_name').value.trim(),
+      width_mm:  parseFloat(document.getElementById('cp_w').value),
+      depth_mm:  parseFloat(document.getElementById('cp_d').value),
+      length_mm: parseFloat(document.getElementById('cp_l').value),
+      pattern:   pat,
+      params:    params
+    };
+  }
+
+  function saveCustomProfile() {
+    const data = readCustomForm();
+    sketchup.save_custom_profile(JSON.stringify(data));
+  }
+
+  function customSaveResult(json) {
+    const r = JSON.parse(json);
+    const el = document.getElementById('cpStatus');
+    el.className = 'form-status ' + (r.ok ? 'ok' : 'err');
+    el.textContent = r.message;
+    if (r.ok) {
+      resetCustomForm();
+      activeCode = r.profile_code || activeCode;
+    }
+  }
+
+  function resetCustomForm() {
+    document.getElementById('cp_code').value = '';
+    document.getElementById('cp_name').value = '';
+    document.getElementById('cp_w').value = 126;
+    document.getElementById('cp_d').value = 18;
+    document.getElementById('cp_l').value = 2800;
+    document.getElementById('cp_pat').value = 'flat';
+    renderParamFields();
+    document.getElementById('cpStatus').className = 'form-status';
+  }
+
+  function deleteCustom(code) {
+    if (!confirm(`"${code}" özel profilini silmek istediğinize emin misiniz?`)) return;
+    sketchup.delete_custom_profile(code);
+  }
+
+  // ------------------ BOOT ------------------
   document.addEventListener('DOMContentLoaded', () => {
+    renderParamFields();
     if (typeof sketchup !== 'undefined') sketchup.dialog_ready();
   });
 </script>

@@ -20,7 +20,7 @@ module CAWorks
 
     PLUGIN_ID      = 'caworks_ca_wall_panel'.freeze
     PLUGIN_NAME    = 'CA-Wall Panel'.freeze
-    PLUGIN_VERSION = '0.2.0'.freeze
+    PLUGIN_VERSION = '0.3.0'.freeze
     PLUGIN_AUTHOR  = 'ca//works (Cihan Aydoğdu)'.freeze
 
     PLUGIN_ROOT = File.dirname(__FILE__)
@@ -28,8 +28,9 @@ module CAWorks
 
     unless file_loaded?(__FILE__)
       ext = SketchupExtension.new(PLUGIN_NAME, File.join(PLUGIN_DIR, 'main'))
-      ext.description = 'Duvar paneli profillerini çizgi/yay/daire boyunca '\
-                        'yan yana dik dizip yukarı doğru extrude eder, renklendirir.'
+      ext.description = 'Lambri/duvar paneli profillerini çizgi/yay/daire/curve '\
+                        'boyunca, component instance olarak yan yana dik dizer; '\
+                        'metraj ve özel profil özellikleri içerir.'
       ext.version     = PLUGIN_VERSION
       ext.creator     = PLUGIN_AUTHOR
       ext.copyright   = "© 2026 #{PLUGIN_AUTHOR}"

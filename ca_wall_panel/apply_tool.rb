@@ -1,14 +1,15 @@
 # ----------------------------------------------------------------
-#  CA-Wall Panel — Apply Tool (v0.2.0)
-#  Kullanıcı bir veya daha fazla bağlantılı edge (line/arc/circle/curve)
-#  seçer ve diyalogda bir yükseklik girer; aktif profile göre, çizgi
-#  boyunca panel genişliği adımlarla yan yana dik panel grupları
-#  oluşturulur. Her panel kendi alt grubu olarak yerleştirilir, hepsi
-#  ortak bir CA-Wall Panel grubunda toplanır.
+#  CA-Wall Panel — Apply Tool (v0.3.0)
+#  ----------------------------------------------------------------
+#  Çizgi/yay/daire/curve seçimi (veya draw_tool ile çizilen polyline)
+#  üzerinde, panel genişliği adımlarıyla **chord-tabanlı** yürüyüş
+#  yaparak komşu panellerin tam uç-uca değdiği bir hat oluşturur.
 #
-#  Geometri: profil kesiti yatay düzlemde (path tanjantı = X, dik
-#  yatay normal = Y) kurulur, ardından pushpull ile yukarı (+Z)
-#  yükseklik kadar extrude edilir.
+#  Her panel: profil+yükseklik için lazy-create edilen
+#  Components.get_or_create ile tanımlı bir ComponentInstance.
+#  Tüm instance'lar tek bir "Lambri Hattı" Group'unda toplanır.
+#  Run group attribute'larında profil kodu, yükseklik, flip ve
+#  ham path noktaları saklanır → Düzenle akışında yeniden üretim.
 # ----------------------------------------------------------------
 
 module CAWorks
@@ -21,83 +22,309 @@ module CAWorks
       @active_profile_code = '18126-46'
       @flip_orientation    = false
       @last_height_mm      = DEFAULT_HEIGHT_MM
+      @editing_run         = nil
+      @last_status         = nil
 
       class << self
-        attr_accessor :active_profile_code, :flip_orientation, :last_height_mm
+        attr_accessor :active_profile_code, :flip_orientation, :last_height_mm,
+                      :editing_run, :last_status
       end
 
-      # ------------------------------------------------------------
-      #  GİRİŞ
-      # ------------------------------------------------------------
+      # ============================================================
+      #  GİRİŞ NOKTALARI
+      # ============================================================
+
+      # Seçimden uygula (mevcut ana akış)
       def self.run(height_mm = nil)
+        @editing_run = nil
+        @last_status = nil
+
         model = Sketchup.active_model
         sel   = model.selection.to_a.select { |e| e.is_a?(Sketchup::Edge) }
 
         if sel.empty?
           UI.messagebox("Önce uygulanacak çizgi(ler)i seçin.\n\n"\
                         "Tek bir çizgi, bir yay (arc), bir daire veya birbirine "\
-                        "bağlı edge'lerden oluşan bir polyline / freehand seçebilirsiniz.")
+                        "bağlı edge'lerden oluşan bir polyline / freehand seçebilirsiniz.\n\n"\
+                        "Veya \"Kalem ile Çiz\" aracını kullanabilirsiniz.")
           return
         end
 
-        profile = Profiles.find(@active_profile_code)
-        unless profile
-          UI.messagebox("Aktif profil bulunamadı: #{@active_profile_code}")
-          return
-        end
-
-        h_mm = (height_mm || @last_height_mm).to_f
-        if h_mm <= 0
-          UI.messagebox("Geçerli bir yükseklik girin.")
-          return
-        end
-
-        max_mm = profile[:length_mm].to_f
-        if h_mm > max_mm
-          answer = UI.messagebox(
-            "Malzeme boyutunu geçtiniz!\n\n" \
-            "Girilen yükseklik     : #{h_mm.round} mm\n" \
-            "Profil standart boyu  : #{max_mm.round} mm\n\n" \
-            "Bu boyda tek parça malzeme bulunmayabilir; uygulamada birden fazla "\
-            "parça gerekecektir.\n\nYine de devam edilsin mi?",
-            MB_YESNO
-          )
-          return if answer == IDNO
-        end
-
-        @last_height_mm = h_mm
+        profile = Profiles.find(@active_profile_code) || Profiles.all.first
+        return unless profile_ok?(profile)
+        return unless height_ok?(height_mm, profile)
 
         ordered = order_edges(sel)
         if ordered.nil? || ordered.empty?
-          UI.messagebox("Seçili edge'ler birbirine bağlı tek bir path "\
-                        "oluşturmuyor. Lütfen bağlantılı edge'leri seçin.")
+          UI.messagebox("Seçili edge'ler birbirine bağlı tek bir path oluşturmuyor.")
           return
         end
 
         parent_entities = ordered.first.parent.entities
         unless ordered.all? { |e| e.parent.entities == parent_entities }
-          UI.messagebox("Seçili edge'ler farklı bağlamlarda (grup/component) "\
-                        "olamaz. Hepsi aynı düzeyde olmalı.")
+          UI.messagebox("Seçili edge'ler aynı bağlamda olmalı (grup/component karışık olamaz).")
           return
         end
 
-        model.start_operation('CA-Wall Panel Uygula', true)
+        path_pts = polyline_points_from_edges(ordered)
+        return if path_pts.size < 2
+
+        execute_build(model, parent_entities, path_pts, profile, @last_height_mm, @flip_orientation)
+      end
+
+      # Verilen edge listesinden uygula (DrawTool tarafından çağrılır)
+      def self.run_from_edges(edges, height_mm, flip)
+        @editing_run = nil
+        return if edges.nil? || edges.empty?
+
+        profile = Profiles.find(@active_profile_code) || Profiles.all.first
+        return unless profile_ok?(profile)
+        return unless height_ok?(height_mm, profile)
+        @flip_orientation = flip
+
+        ordered = order_edges(edges)
+        return if ordered.nil? || ordered.empty?
+
+        parent_entities = ordered.first.parent.entities
+        path_pts = polyline_points_from_edges(ordered)
+        return if path_pts.size < 2
+
+        model = Sketchup.active_model
+        execute_build(model, parent_entities, path_pts, profile, @last_height_mm, @flip_orientation)
+      end
+
+      # Mevcut bir Lambri Hattı'nı düzenle: aynı path üzerinde yeni
+      # profil/yükseklik/flip ile yeniden üret
+      def self.regenerate_run(run_group, profile, height_mm, flip)
+        return unless panel_run?(run_group)
+
+        pts_arr = run_group.get_attribute(ATTR_DICT, 'path_points')
+        unless pts_arr.is_a?(Array) && pts_arr.size >= 6
+          UI.messagebox("Bu hatın orijinal yol verisi bulunamadı. Yeniden çizmeniz gerekir.")
+          return
+        end
+
+        path_pts = []
+        i = 0
+        while i + 2 < pts_arr.size
+          path_pts << Geom::Point3d.new(pts_arr[i], pts_arr[i + 1], pts_arr[i + 2])
+          i += 3
+        end
+
+        return unless profile_ok?(profile)
+        return unless height_ok?(height_mm, profile)
+
+        model = Sketchup.active_model
+
+        @last_height_mm      = height_mm.to_f
+        @active_profile_code = profile[:code]
+        @flip_orientation    = !!flip
+
+        parent_entities = run_group.parent.is_a?(Sketchup::ComponentDefinition) ?
+                          run_group.parent.entities :
+                          model.entities
+
+        model.start_operation('CA-Wall Panel Düzenle', true)
         begin
-          group = build_panels_along_path(model, parent_entities, ordered, profile, h_mm)
-          if group
-            model.selection.clear
-            model.selection.add(group)
-          end
+          run_group.entities.clear!
+          fill_run_group(run_group, path_pts, profile, height_mm.to_f, !!flip)
           model.commit_operation
+          model.selection.clear
+          model.selection.add(run_group)
         rescue StandardError => e
           model.abort_operation
-          UI.messagebox("Hata: #{e.message}\n\n#{e.backtrace.first(5).join("\n")}")
+          UI.messagebox("Düzenleme hatası: #{e.message}\n\n#{e.backtrace.first(5).join("\n")}")
         end
       end
 
-      # ------------------------------------------------------------
+      # ============================================================
+      #  ORTAK
+      # ============================================================
+
+      def self.profile_ok?(profile)
+        unless profile
+          UI.messagebox("Aktif profil bulunamadı.")
+          return false
+        end
+        true
+      end
+
+      def self.height_ok?(height_mm, profile)
+        h_mm = (height_mm || @last_height_mm).to_f
+        if h_mm <= 0
+          UI.messagebox("Geçerli bir yükseklik girin.")
+          return false
+        end
+        max_mm = profile[:length_mm].to_f
+        if max_mm > 0 && h_mm > max_mm
+          answer = UI.messagebox(
+            "Malzeme boyutunu geçtiniz!\n\n" \
+            "Girilen yükseklik    : #{h_mm.round} mm\n" \
+            "Profil standart boyu : #{max_mm.round} mm\n\n" \
+            "Bu boyda tek parça malzeme bulunmayabilir; uygulamada birden fazla "\
+            "parça gerekecektir.\n\nYine de devam edilsin mi?",
+            MB_YESNO
+          )
+          return false if answer == IDNO
+        end
+        @last_height_mm = h_mm
+        true
+      end
+
+      def self.execute_build(model, parent_entities, path_pts, profile, height_mm, flip)
+        model.start_operation('CA-Wall Panel Uygula', true)
+        begin
+          run_group = parent_entities.add_group
+          run_group.name = "Lambri Hattı · #{profile[:code]} · h#{height_mm.round}mm"
+          fill_run_group(run_group, path_pts, profile, height_mm, flip)
+
+          if run_group.entities.length == 0
+            run_group.erase! if run_group.valid?
+            model.abort_operation
+            UI.messagebox("Hat oluşturulamadı.")
+            return nil
+          end
+
+          model.commit_operation
+          model.selection.clear
+          model.selection.add(run_group)
+          run_group
+        rescue StandardError => e
+          model.abort_operation
+          UI.messagebox("Hata: #{e.message}\n\n#{e.backtrace.first(5).join("\n")}")
+          nil
+        end
+      end
+
+      def self.fill_run_group(run_group, path_pts, profile, height_mm, flip)
+        segments = segments_from_polyline(path_pts)
+        return if segments.empty?
+
+        panel_w_inch = profile[:width_mm].mm
+        total_len    = segments.sum { |s| s[:length] }
+
+        if total_len < panel_w_inch
+          UI.messagebox(
+            "Çizgi en az bir panel boyu (#{profile[:width_mm]}mm) olmalı.\n" \
+            "Seçili path uzunluğu: #{(total_len / 1.mm).round} mm"
+          )
+          return
+        end
+
+        chord_pts = walk_chord_points(segments, panel_w_inch)
+        return if chord_pts.size < 2
+
+        defn = Components.get_or_create(profile, height_mm)
+        z_up = Geom::Vector3d.new(0, 0, 1)
+
+        placed = 0
+        (0...(chord_pts.size - 1)).each do |i|
+          p_a = chord_pts[i]
+          p_b = chord_pts[i + 1]
+
+          x_axis = p_b - p_a
+          next if x_axis.length < 1.0e-9
+          x_axis.normalize!
+
+          y_axis = z_up * x_axis
+          if y_axis.length < 1.0e-9
+            y_axis = Geom::Vector3d.new(0, 1, 0)
+          else
+            y_axis.normalize!
+          end
+          y_axis.reverse! if flip
+
+          # z-axis daima global yukarı — panel her zaman yukarı extrude.
+          # flip durumunda x,y left-handed olur; SU bunu yansıma olarak işler,
+          # ki bu da "panelin path'in diğer tarafına yerleştirilmesi" demek.
+          tr = Geom::Transformation.axes(p_a, x_axis, y_axis, z_up)
+          inst = run_group.entities.add_instance(defn, tr)
+          inst.name = "Panel #{placed + 1}"
+          placed += 1
+        end
+
+        return if placed.zero?
+
+        path_array = path_pts.flat_map { |p| [p.x.to_f, p.y.to_f, p.z.to_f] }
+        run_group.set_attribute(ATTR_DICT, 'is_panel_run', true)
+        run_group.set_attribute(ATTR_DICT, 'profile_code', profile[:code])
+        run_group.set_attribute(ATTR_DICT, 'profile_name', profile[:name])
+        run_group.set_attribute(ATTR_DICT, 'height_mm',    height_mm.to_f)
+        run_group.set_attribute(ATTR_DICT, 'flip',         !!flip)
+        run_group.set_attribute(ATTR_DICT, 'panel_count',  placed)
+        run_group.set_attribute(ATTR_DICT, 'width_mm',     profile[:width_mm].to_f)
+        run_group.set_attribute(ATTR_DICT, 'depth_mm',     profile[:depth_mm].to_f)
+        run_group.set_attribute(ATTR_DICT, 'length_mm',    profile[:length_mm].to_f)
+        run_group.set_attribute(ATTR_DICT, 'path_points',  path_array)
+        run_group.name = "Lambri Hattı · #{profile[:code]} · #{placed}× h#{height_mm.round}mm"
+        @last_status = "#{placed} panel yerleştirildi (#{profile[:code]})"
+      end
+
+      def self.panel_run?(group)
+        group.is_a?(Sketchup::Group) &&
+          group.get_attribute(ATTR_DICT, 'is_panel_run') == true
+      end
+
+      def self.find_selected_run
+        sel = Sketchup.active_model.selection.to_a
+        sel.find { |e| panel_run?(e) }
+      end
+
+      # ============================================================
+      #  EDGE → POLYLINE
+      # ============================================================
+      def self.polyline_points_from_edges(ordered_edges)
+        return [] if ordered_edges.empty?
+
+        if ordered_edges.size == 1
+          e = ordered_edges.first
+          return [e.start.position, e.end.position]
+        end
+
+        pts = []
+        e1  = ordered_edges[0]
+        e2  = ordered_edges[1]
+        e1s = e1.start.position
+        e1e = e1.end.position
+        if pt_key(e1e) == pt_key(e2.start.position) ||
+           pt_key(e1e) == pt_key(e2.end.position)
+          a = e1s; b = e1e
+        else
+          a = e1e; b = e1s
+        end
+        pts << a << b
+        prev_end = b
+
+        ordered_edges[1..-1].each do |e|
+          es = e.start.position; ee = e.end.position
+          if pt_key(es) == pt_key(prev_end)
+            pts << ee
+            prev_end = ee
+          else
+            pts << es
+            prev_end = es
+          end
+        end
+
+        pts
+      end
+
+      def self.segments_from_polyline(pts)
+        segs = []
+        cumulative = 0.0
+        (0...(pts.size - 1)).each do |i|
+          a = pts[i]; b = pts[i + 1]
+          len = (b - a).length
+          next if len < 1.0e-12
+          segs << { a: a, b: b, length: len, cum_start: cumulative }
+          cumulative += len
+        end
+        segs
+      end
+
+      # ============================================================
       #  EDGE SIRALAMA
-      # ------------------------------------------------------------
+      # ============================================================
       def self.order_edges(edges)
         return [] if edges.empty?
         return edges if edges.size == 1
@@ -152,180 +379,61 @@ module CAWorks
                                   (pt.z / tol).round * tol)
       end
 
-      # ------------------------------------------------------------
-      #  PATH ÖRNEKLEME — yürüyüş yönüne göre segment listesi
-      #  (eğri/yayda her edge ayrı segment, kümülatif uzunluk hesaplı)
-      # ------------------------------------------------------------
-      def self.compute_walk_segments(ordered_edges)
-        return [] if ordered_edges.empty?
+      # ============================================================
+      #  CHORD-TABANLI YÜRÜYÜŞ — komşu paneller arası tam uç-uca
+      # ============================================================
+      def self.walk_chord_points(segments, chord_dist)
+        return [] if segments.empty? || chord_dist <= 0
 
-        if ordered_edges.size == 1
-          e = ordered_edges.first
-          a = e.start.position; b = e.end.position
-          return [{ a: a, b: b, length: (b - a).length, cum_start: 0.0 }]
+        pts     = [segments.first[:a]]
+        current = segments.first[:a]
+        seg_idx = 0
+        local_t = 0.0
+
+        loop do
+          np, ni, nt = find_next_chord(segments, seg_idx, local_t, current, chord_dist)
+          break if np.nil?
+          pts << np
+          current = np
+          seg_idx = ni
+          local_t = nt
         end
 
-        segments   = []
-        cumulative = 0.0
+        pts
+      end
 
-        e1  = ordered_edges[0]
-        e2  = ordered_edges[1]
-        e1s = e1.start.position
-        e1e = e1.end.position
-        if pt_key(e1e) == pt_key(e2.start.position) ||
-           pt_key(e1e) == pt_key(e2.end.position)
-          a = e1s; b = e1e
-        else
-          a = e1e; b = e1s
-        end
-        len = (b - a).length
-        segments << { a: a, b: b, length: len, cum_start: 0.0 }
-        cumulative += len
-        prev_end = b
-
-        ordered_edges[1..-1].each do |e|
-          es = e.start.position; ee = e.end.position
-          if pt_key(es) == pt_key(prev_end)
-            a = es; b = ee
-          else
-            a = ee; b = es
+      def self.find_next_chord(segments, start_idx, start_t, center, radius)
+        idx = start_idx
+        while idx < segments.size
+          seg = segments[idx]
+          a = seg[:a]; b = seg[:b]
+          d_vec  = b - a
+          a_co   = d_vec.dot(d_vec)
+          if a_co < 1.0e-12
+            idx += 1
+            next
           end
-          len = (b - a).length
-          segments << { a: a, b: b, length: len, cum_start: cumulative }
-          cumulative += len
-          prev_end = b
-        end
-
-        segments
-      end
-
-      def self.sample_at_distance(segments, d)
-        segments.each do |seg|
-          if d <= seg[:cum_start] + seg[:length] + 1.0e-9
-            t = seg[:length] > 1.0e-12 ? (d - seg[:cum_start]) / seg[:length] : 0.0
-            t = 0.0 if t < 0.0
-            t = 1.0 if t > 1.0
-            pos = Geom::Point3d.linear_combination(1.0 - t, seg[:a], t, seg[:b])
-            tan = seg[:b] - seg[:a]
-            tan.length = 1.0 if tan.length > 1.0e-12
-            return [pos, tan]
+          offset = a - center
+          b_co   = 2.0 * offset.dot(d_vec)
+          c_co   = offset.dot(offset) - radius * radius
+          disc   = b_co * b_co - 4.0 * a_co * c_co
+          if disc < 0
+            idx += 1
+            next
           end
+          sd     = Math.sqrt(disc)
+          t_min  = (idx == start_idx) ? start_t : 0.0
+          t_candidates = [(-b_co - sd) / (2.0 * a_co), (-b_co + sd) / (2.0 * a_co)]
+          ts = t_candidates.select { |t| t > t_min + 1.0e-9 && t <= 1.0 + 1.0e-9 }.sort
+          if ts.empty?
+            idx += 1
+            next
+          end
+          t = [ts.first, 1.0].min
+          p = Geom::Point3d.linear_combination(1.0 - t, a, t, b)
+          return [p, idx, t]
         end
-        last = segments.last
-        tan  = last[:b] - last[:a]
-        tan.length = 1.0 if tan.length > 1.0e-12
-        [last[:b], tan]
-      end
-
-      # ------------------------------------------------------------
-      #  ANA İNŞA — path boyunca panelleri yan yana yerleştir
-      # ------------------------------------------------------------
-      def self.build_panels_along_path(model, entities, ordered_edges, profile, height_mm)
-        segments = compute_walk_segments(ordered_edges)
-        return nil if segments.empty?
-
-        total_len_inch = segments.sum { |s| s[:length] }
-        panel_w_inch   = profile[:width_mm].mm
-        height_inch    = height_mm.mm
-
-        if total_len_inch < panel_w_inch
-          UI.messagebox(
-            "Çizgi en az bir panel boyu (#{profile[:width_mm]}mm) olmalı.\n" \
-            "Seçili path uzunluğu: #{(total_len_inch / 1.mm).round} mm"
-          )
-          return nil
-        end
-
-        panel_count = (total_len_inch / panel_w_inch).floor
-        local_pts   = Profiles.build_profile_points(profile)
-
-        panel_groups = []
-
-        panel_count.times do |i|
-          d_start = i * panel_w_inch
-          pos, tangent = sample_at_distance(segments, d_start)
-          pg = place_panel(entities, pos, tangent, local_pts, profile, height_inch)
-          panel_groups << pg if pg
-        end
-
-        return nil if panel_groups.empty?
-
-        parent = entities.add_group(panel_groups)
-        parent.name = "CA-Wall Panel #{profile[:code]} " \
-                      "(#{panel_groups.size}× #{profile[:width_mm]}×#{profile[:depth_mm]}mm, " \
-                      "h=#{height_mm.round}mm)"
-
-        parent.set_attribute(ATTR_DICT, 'profile_code', profile[:code])
-        parent.set_attribute(ATTR_DICT, 'profile_name', profile[:name])
-        parent.set_attribute(ATTR_DICT, 'width_mm',    profile[:width_mm])
-        parent.set_attribute(ATTR_DICT, 'depth_mm',    profile[:depth_mm])
-        parent.set_attribute(ATTR_DICT, 'height_mm',   height_mm)
-        parent.set_attribute(ATTR_DICT, 'panel_count', panel_groups.size)
-
-        apply_default_material(parent)
-
-        parent
-      end
-
-      # ------------------------------------------------------------
-      #  TEK PANEL — yatay düzlemde profil kesiti + yukarı pushpull
-      # ------------------------------------------------------------
-      def self.place_panel(entities, pos, tangent, local_pts, profile, height_inch)
-        t_h = Geom::Vector3d.new(tangent.x, tangent.y, 0)
-        if t_h.length < 1.0e-9
-          t_h = Geom::Vector3d.new(1, 0, 0)
-        else
-          t_h.normalize!
-        end
-
-        z = Geom::Vector3d.new(0, 0, 1)
-        n = t_h * z
-        if n.length < 1.0e-9
-          n = Geom::Vector3d.new(0, 1, 0)
-        else
-          n.normalize!
-        end
-        n.reverse! if @flip_orientation
-
-        base_pts = local_pts.map do |lp|
-          p = pos
-          p = offset_pt(p, t_h, lp.x)
-          p = offset_pt(p, n,   lp.y)
-          p
-        end
-
-        panel_group = entities.add_group
-        panel_ents  = panel_group.entities
-
-        face = panel_ents.add_face(base_pts)
-        if face.nil?
-          panel_group.erase! if panel_group.valid?
-          return nil
-        end
-
-        z_up = Geom::Vector3d.new(0, 0, 1)
-        face.reverse! if face.normal.dot(z_up) < 0
-
-        face.pushpull(height_inch)
-
-        panel_group.name = profile[:code]
-        panel_group
-      end
-
-      def self.offset_pt(p, vec, amount)
-        return p if amount.abs < 1.0e-9
-        v = vec.clone
-        v.length = amount.abs
-        v.reverse! if amount < 0
-        p.offset(v)
-      end
-
-      def self.apply_default_material(group)
-        model = Sketchup.active_model
-        mat   = model.materials['CAWallPanel_Default'] ||
-                model.materials.add('CAWallPanel_Default')
-        mat.color = Sketchup::Color.new(245, 245, 240)
-        group.material = mat
+        nil
       end
 
     end
