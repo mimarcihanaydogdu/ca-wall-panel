@@ -10,6 +10,7 @@ require File.join(File.dirname(__FILE__), 'components')
 require File.join(File.dirname(__FILE__), 'apply_tool')
 require File.join(File.dirname(__FILE__), 'draw_tool')
 require File.join(File.dirname(__FILE__), 'metraj')
+require File.join(File.dirname(__FILE__), 'isolate_tool')
 require File.join(File.dirname(__FILE__), 'colorize_tool')
 require File.join(File.dirname(__FILE__), 'updater')
 
@@ -32,6 +33,9 @@ module CAWorks
     def self.show_profile_dialog(edit_run: nil)
       build_profile_dialog if @profile_dialog.nil?
 
+      # Hatalı bir önceki edit referansını taşıma
+      ApplyTool.editing_run = nil unless edit_run
+
       if @profile_dialog.visible?
         @profile_dialog.bring_to_front
       else
@@ -42,6 +46,7 @@ module CAWorks
       @profile_dialog.execute_script(
         "setDefaultHeight(#{ApplyTool.last_height_mm.to_f});"
       )
+      @profile_dialog.execute_script("cancelEdit();") unless edit_run
 
       if edit_run
         ApplyTool.editing_run = edit_run
@@ -173,32 +178,46 @@ module CAWorks
       end
 
       @profile_dialog.add_action_callback('save_custom_profile') do |_ctx, json_str|
-        data = JSON.parse(json_str) rescue {}
-        sym  = {
-          code:      data['code'],
-          name:      data['name'],
-          width_mm:  data['width_mm'],
-          depth_mm:  data['depth_mm'],
-          length_mm: data['length_mm'],
-          pattern:   (data['pattern'] || 'flat').to_sym,
-          params:    (data['params']  || {})
-        }
-        ok, payload = Profiles.save_custom(sym)
-        if ok
-          send_profiles_to_dialog
-          result = { ok: true,
-                     message: "Özel profil kaydedildi: #{payload[:code]}",
-                     profile_code: payload[:code] }
-        else
-          result = { ok: false, message: payload.to_s }
-        end
+        result = save_custom_profile_safely(json_str)
         @profile_dialog.execute_script("customSaveResult(#{result.to_json.inspect});")
       end
 
       @profile_dialog.add_action_callback('delete_custom_profile') do |_ctx, code|
-        Profiles.delete_custom(code)
-        send_profiles_to_dialog
+        begin
+          Profiles.delete_custom(code)
+          send_profiles_to_dialog
+        rescue StandardError => e
+          UI.messagebox("Özel profil silinemedi: #{e.message}")
+        end
       end
+    end
+
+    # save_custom_profile callback'inin tamamı bu fonksiyona alınmıştır →
+    # her hata JSON sonucu olarak JS'e döner; dialog kilitlenmez.
+    def self.save_custom_profile_safely(json_str)
+      data = JSON.parse(json_str.to_s)
+      sym  = {
+        code:      data['code'],
+        name:      data['name'],
+        width_mm:  data['width_mm'],
+        depth_mm:  data['depth_mm'],
+        length_mm: data['length_mm'],
+        pattern:   (data['pattern'] || 'flat').to_sym,
+        params:    (data['params']  || {})
+      }
+      ok, payload = Profiles.save_custom(sym)
+      if ok
+        send_profiles_to_dialog
+        { ok: true,
+          message:      "Özel profil kaydedildi: #{payload[:code]}",
+          profile_code: payload[:code] }
+      else
+        { ok: false, message: payload.to_s }
+      end
+    rescue JSON::ParserError => e
+      { ok: false, message: "Form verisi okunamadı: #{e.message}" }
+    rescue StandardError => e
+      { ok: false, message: "Kayıt hatası: #{e.message}" }
     end
 
     # ------------------------------------------------------------
@@ -217,17 +236,19 @@ module CAWorks
         preferences_key: 'caworks_ca_wall_panel_colors',
         scrollable:      true,
         resizable:       true,
-        width:           340,
-        height:          520,
-        min_width:       260,
-        min_height:      320,
+        width:           380,
+        height:          600,
+        min_width:       300,
+        min_height:      380,
         style:           UI::HtmlDialog::STYLE_DIALOG
       )
       @color_dialog.set_file(html_path)
 
       @color_dialog.add_action_callback('palette_ready') do |_ctx|
-        json = Colorize::PALETTE.to_json
-        @color_dialog.execute_script("loadPalette(#{json.inspect});")
+        @color_dialog.execute_script(
+          "loadPalette(#{Colorize::PALETTE.to_json.inspect});"
+        )
+        send_recent_textures
       end
 
       @color_dialog.add_action_callback('apply_color') do |_ctx, name, r, g, b|
@@ -238,11 +259,27 @@ module CAWorks
         Colorize.apply_custom
       end
 
+      @color_dialog.add_action_callback('load_texture') do |_ctx|
+        Colorize.apply_texture_from_file
+        send_recent_textures
+      end
+
+      @color_dialog.add_action_callback('apply_recent_texture') do |_ctx, path, name, tw, th|
+        Colorize.apply_recent_texture(path, name, tw.to_f, th.to_f)
+        send_recent_textures
+      end
+
       @color_dialog.show
     end
 
+    def self.send_recent_textures
+      return unless @color_dialog
+      json = Colorize.recent_textures.to_json
+      @color_dialog.execute_script("loadRecents(#{json.inspect});")
+    end
+
     # ------------------------------------------------------------
-    #  KISAYOL: Düzenle / Çiz / Metraj
+    #  KISAYOLLAR
     # ------------------------------------------------------------
     def self.start_draw_tool
       Sketchup.active_model.select_tool(
@@ -267,25 +304,27 @@ module CAWorks
     # ------------------------------------------------------------
     unless file_loaded?(__FILE__)
       menu = UI.menu('Plugins').add_submenu('CA-Wall Panel')
-      menu.add_item('Profil Seç ve Uygula') { show_profile_dialog }
-      menu.add_item('Kalem ile Çiz')        { start_draw_tool }
-      menu.add_item("Lambri'yi Düzenle")    { edit_selected_run }
-      menu.add_item('Metraj')               { Metraj.show }
-      menu.add_item('Renklendir')           { show_color_dialog }
+      menu.add_item('Profil Seç ve Uygula')  { show_profile_dialog }
+      menu.add_item('Kalem ile Çiz')         { start_draw_tool }
+      menu.add_item("Lambri'yi Düzenle")     { edit_selected_run }
+      menu.add_item('Metraj')                { Metraj.show }
+      menu.add_item('Renklendir / Doku')     { show_color_dialog }
+      menu.add_item('Yalnız Lambri Modu')    { IsolateTool.toggle }
       menu.add_separator
-      menu.add_item('Güncelle Plugini')     { Updater.update_now! }
+      menu.add_item('Güncelle Plugini')      { Updater.update_now! }
       menu.add_item('Hakkında') do
         UI.messagebox(
           "CA-Wall Panel v#{PLUGIN_VERSION}\n\n" \
           "ca//works · Cihan Aydoğdu Mimarlık\n\n" \
-          "Yenilikler (0.3.0):\n" \
-          " · Paneller Component Instance — definition'a girip değişiklik\n" \
-          "   yaparsanız tüm paneller birlikte güncellenir.\n" \
-          " · Eğri/yayda tam uç-uca dizilim (chord-tabanlı yürüyüş).\n" \
-          " · Kalem aracı ile doğrudan çizip uygulama.\n" \
-          " · Lambri'yi Düzenle: seçili hattı yeni profil/yükseklik ile yeniden üret.\n" \
-          " · Metraj raporu (HTML, Yazdır → PDF).\n" \
-          " · Özel profil ekleme/silme."
+          "Yenilikler (0.4.0):\n" \
+          " · Renk uygulama düzeltildi (Component Instance bazında).\n" \
+          " · Lambri Hattı 'Lambri' katmanına otomatik atanır.\n" \
+          " · Yalnız Lambri Modu: tek tıkla diğer her şeyi gizle/göster.\n" \
+          " · Kalem aracı: kırmızı/yeşil/mavi eksen-snap + VCB'den yükseklik girme.\n" \
+          " · Metraj: renk/materyal sütunu + CSV (Excel) export.\n" \
+          " · Fire hesabı sadeleştirildi (stok × parça − panel × yükseklik).\n" \
+          " · PNG/JPG ile render-ready doku yükleme + son kullanılan dokular listesi.\n" \
+          " · Özel profil ekleme akışı dayanıklılaştırıldı (hata = temiz mesaj)."
         )
       end
 
@@ -295,7 +334,7 @@ module CAWorks
 
       cmd1 = UI::Command.new('CA-Wall Panel') { show_profile_dialog }
       cmd1.tooltip          = 'CA-Wall Panel — Profil seç ve uygula'
-      cmd1.status_bar_text  = 'Bir çizgi/yay/daire seçip duvar paneli profilini yan yana dizin'
+      cmd1.status_bar_text  = 'Çizgi/yay/curve seçin, panelleri yan yana dizin'
       icon1 = File.join(icon_dir, 'panel.svg')
       if File.exist?(icon1)
         cmd1.large_icon = icon1
@@ -304,23 +343,29 @@ module CAWorks
       tb.add_item(cmd1)
 
       cmd_draw = UI::Command.new('Kalem ile Çiz') { start_draw_tool }
-      cmd_draw.tooltip         = 'Kalem aracı — tıklayarak yol çiz, paneller anında yerleşir'
-      cmd_draw.status_bar_text = 'Sol tık: nokta · Enter/Sağ tık: bitir · Esc: iptal'
+      cmd_draw.tooltip         = 'Kalem aracı — eksen-snap + VCB ile yükseklik'
+      cmd_draw.status_bar_text = 'Sol tık: nokta · Enter/Sağ tık: bitir · Esc: iptal · VCB: yükseklik'
       tb.add_item(cmd_draw)
 
       cmd_edit = UI::Command.new("Lambri'yi Düzenle") { edit_selected_run }
       cmd_edit.tooltip         = 'Seçili Lambri Hattı için profil/yükseklik değiştir'
-      cmd_edit.status_bar_text = 'Bir Lambri Hattı seçip Düzenle ile yeniden üret'
+      cmd_edit.status_bar_text = 'Lambri Hattı seçip Düzenle ile yeniden üret'
       tb.add_item(cmd_edit)
 
       cmd_metraj = UI::Command.new('Metraj') { Metraj.show }
-      cmd_metraj.tooltip         = 'Modeldeki tüm Lambri Hatlarının metraj raporu'
-      cmd_metraj.status_bar_text = 'Profil bazlı toplam panel, alan ve fire listesi'
+      cmd_metraj.tooltip         = 'Modeldeki Lambri Hatlarının metraj raporu (PDF + CSV)'
+      cmd_metraj.status_bar_text = 'Profil + renk bazlı panel/alan/parça/fire'
       tb.add_item(cmd_metraj)
 
-      cmd2 = UI::Command.new('Renklendir') { show_color_dialog }
-      cmd2.tooltip         = 'Yerleştirilmiş CA-Wall Panel grubunu renklendir'
-      cmd2.status_bar_text = 'Panel grubunu seçip rengini değiştirin'
+      cmd_iso = UI::Command.new('Yalnız Lambri Modu') { IsolateTool.toggle }
+      cmd_iso.tooltip         = 'Tek tıkla Lambri dışındakileri gizle / geri aç'
+      cmd_iso.status_bar_text = 'Plan/kesit incelemesi için izolasyon'
+      cmd_iso.set_validation_proc { IsolateTool.active? ? MF_CHECKED : MF_UNCHECKED }
+      tb.add_item(cmd_iso)
+
+      cmd2 = UI::Command.new('Renklendir / Doku') { show_color_dialog }
+      cmd2.tooltip         = 'Renk + PNG/JPG render-ready doku uygula'
+      cmd2.status_bar_text = 'Lambri Hattı seçip renk veya texture uygulayın'
       icon2 = File.join(icon_dir, 'color.svg')
       if File.exist?(icon2)
         cmd2.large_icon = icon2

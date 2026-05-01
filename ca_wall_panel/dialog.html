@@ -222,8 +222,19 @@
   let editing = null;     // { run_token, run_name, profile_code, height_mm, flip }
 
   // ------------------ INIT ------------------
+  window.addEventListener('error', e => {
+    try { console.error('CA-Wall dialog JS error:', e.message); } catch(_) {}
+  });
+
   function loadProfiles(json) {
-    profiles = JSON.parse(json);
+    try {
+      const arr = JSON.parse(json);
+      if (!Array.isArray(arr)) throw new Error('Profil listesi geçersiz');
+      profiles = arr;
+    } catch (err) {
+      console.error('loadProfiles parse error:', err);
+      return;
+    }
     if (!activeCode || !profiles.find(p => p.code === activeCode)) {
       activeCode = profiles[0] ? profiles[0].code : null;
     }
@@ -265,23 +276,41 @@
     const grid = document.getElementById('profileGrid');
     grid.innerHTML = '';
     profiles.forEach(p => {
-      const card = document.createElement('div');
-      card.className = 'card' + (p.code === activeCode ? ' active' : '') +
-                       (p.custom ? ' custom' : '');
-      card.onclick = (ev) => {
-        if (ev.target.classList.contains('delx')) return;
-        selectProfile(p.code);
-      };
-      const badge = p.custom ? '<div class="badge">ÖZEL</div>' : '';
-      const delx  = p.custom ?
-        `<button class="delx" onclick="deleteCustom('${escAttr(p.code)}')" title="Sil">×</button>` : '';
-      card.innerHTML = `
-        ${badge}${delx}
-        ${profileSVG(p)}
-        <div class="code">${escHtml(p.code)}</div>
-        <div class="dim">${p.width_mm}×${p.depth_mm}mm</div>
-      `;
-      grid.appendChild(card);
+      try {
+        const card = document.createElement('div');
+        card.className = 'card' + (p.code === activeCode ? ' active' : '') +
+                         (p.custom ? ' custom' : '');
+        card.onclick = (ev) => {
+          if (ev.target.classList.contains('delx')) return;
+          selectProfile(p.code);
+        };
+        const badge = p.custom ? '<div class="badge">ÖZEL</div>' : '';
+        const delx  = p.custom ?
+          `<button class="delx" data-code="${escAttr(p.code)}" title="Sil">×</button>` : '';
+        let svg;
+        try { svg = profileSVG(p); }
+        catch (svgErr) {
+          console.error('profileSVG error for', p && p.code, svgErr);
+          svg = '<svg viewBox="0 0 100 40"><rect x="2" y="2" width="96" height="36" fill="#eee" stroke="#999"/></svg>';
+        }
+        card.innerHTML = `
+          ${badge}${delx}
+          ${svg}
+          <div class="code">${escHtml(p.code || '?')}</div>
+          <div class="dim">${p.width_mm || '?'}×${p.depth_mm || '?'}mm</div>
+        `;
+        const delBtn = card.querySelector('.delx');
+        if (delBtn) {
+          delBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const code = delBtn.getAttribute('data-code');
+            if (code) deleteCustom(code);
+          });
+        }
+        grid.appendChild(card);
+      } catch (cardErr) {
+        console.error('renderGrid card error:', cardErr);
+      }
     });
   }
 
@@ -533,13 +562,23 @@
   }
 
   function customSaveResult(json) {
-    const r = JSON.parse(json);
+    let r;
+    try { r = JSON.parse(json); }
+    catch (e) {
+      console.error('customSaveResult parse:', e);
+      r = { ok: false, message: 'İç hata (JSON parse)' };
+    }
     const el = document.getElementById('cpStatus');
     el.className = 'form-status ' + (r.ok ? 'ok' : 'err');
-    el.textContent = r.message;
+    el.textContent = r.message || (r.ok ? 'Kaydedildi.' : 'Hata.');
     if (r.ok) {
       resetCustomForm();
-      activeCode = r.profile_code || activeCode;
+      if (r.profile_code) {
+        activeCode = r.profile_code;
+        renderGrid();
+        updateProfileLenInfo();
+        validateHeight();
+      }
     }
   }
 

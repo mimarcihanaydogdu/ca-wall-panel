@@ -5,6 +5,10 @@
 #  oluşturulur ve cache'lenir. Aynı kombinasyona ait tüm paneller bu
 #  definition'ın instance'larıdır → kullanıcı definition içine girip
 #  değişiklik yapınca tüm paneller birlikte güncellenir.
+#
+#  Önemli: definition içindeki yüzlere materyal atanmaz; renklendirme
+#  ComponentInstance üzerine yapılır → kullanıcı renk değiştirdiğinde
+#  görünür.
 # ----------------------------------------------------------------
 
 module CAWorks
@@ -53,11 +57,7 @@ module CAWorks
                            "#{profile[:width_mm]}×#{profile[:depth_mm]}× " \
                            "h:#{height_mm.round}mm"
 
-        mat = model.materials['CAWallPanel_Default'] ||
-              model.materials.add('CAWallPanel_Default')
-        mat.color = Sketchup::Color.new(245, 245, 240)
-        defn.entities.grep(Sketchup::Face).each { |f| f.material = mat unless f.material }
-
+        # Yüzlere materyal atanmaz → ComponentInstance / Group materyali görünür.
         defn
       end
 

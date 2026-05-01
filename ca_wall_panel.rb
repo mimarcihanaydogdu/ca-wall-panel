@@ -20,7 +20,7 @@ module CAWorks
 
     PLUGIN_ID      = 'caworks_ca_wall_panel'.freeze
     PLUGIN_NAME    = 'CA-Wall Panel'.freeze
-    PLUGIN_VERSION = '0.3.0'.freeze
+    PLUGIN_VERSION = '0.4.0'.freeze
     PLUGIN_AUTHOR  = 'ca//works (Cihan Aydoğdu)'.freeze
 
     PLUGIN_ROOT = File.dirname(__FILE__)

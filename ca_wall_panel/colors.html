@@ -12,6 +12,7 @@
     font-size: 12px;
   }
   h2 { margin: 0 0 4px; font-size: 14px; }
+  h3 { margin: 14px 0 6px; font-size: 12px; color: #555; }
   .sub { color: #666; margin-bottom: 12px; font-size: 11px; }
   .grid {
     display: grid;
@@ -33,35 +34,71 @@
   button {
     width: 100%; padding: 8px; font-size: 12px;
     background: #555; color: #fff; border: none; border-radius: 4px;
-    cursor: pointer; font-weight: 600;
+    cursor: pointer; font-weight: 600; margin-bottom: 6px;
   }
   button:hover { background: #333; }
+  button.primary { background: #f5a623; }
+  button.primary:hover { background: #d98e0a; }
   .hint {
     background: #eef5ff; border: 1px solid #b6d4f7;
     padding: 6px 8px; border-radius: 4px; margin-bottom: 10px;
     font-size: 11px; color: #2050a0;
   }
+  .recent-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 6px;
+  }
+  .recent-item {
+    background: #fff; border: 1px solid #ddd; border-radius: 4px;
+    padding: 6px 8px; cursor: pointer; font-size: 11px;
+    display: flex; align-items: center; gap: 6px;
+    overflow: hidden;
+  }
+  .recent-item:hover { border-color: #f5a623; background: #fffaf0; }
+  .recent-item .icon { font-size: 14px; }
+  .recent-item .name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 1;
+  }
+  .empty { color: #888; font-style: italic; font-size: 11px; }
 </style>
 </head>
 <body>
 
-<h2>CA-Wall Panel Renkler</h2>
-<div class="sub">Yerleştirilmiş panel grubunu seçip renge tıklayın</div>
+<h2>CA-Wall Panel Renkler & Dokular</h2>
+<div class="sub">Lambri Hattı seçili iken — render-ready materyal atar (V-Ray/Enscape).</div>
 
 <div class="hint">
-  Önce SketchUp'ta bir CA-Wall Panel grubunu seçin, sonra aşağıdan renk seçin.
+  Önce SketchUp'ta bir Lambri Hattı (panel grubunu) seçin, sonra renk veya doku uygulayın.
+  Doku tile boyutu metraj ölçeğinde (mm) girilir.
 </div>
 
+<h3>Renk Paleti</h3>
 <div class="grid" id="paletteGrid"></div>
 
 <button onclick="customColor()">+ Custom Renk (RGB)</button>
 
+<h3>Doku (PNG/JPG)</h3>
+<button class="primary" onclick="loadTexture()">📁 PNG/JPG ile Doku Yükle</button>
+
+<h3>Son Kullanılan Dokular</h3>
+<div class="recent-list" id="recentList">
+  <div class="empty">Henüz doku yüklenmemiş.</div>
+</div>
+
 <script>
   let palette = [];
+  let recents = [];
 
   function loadPalette(json) {
-    palette = JSON.parse(json);
+    try { palette = JSON.parse(json); } catch(e) { palette = []; }
     renderPalette();
+  }
+
+  function loadRecents(json) {
+    try { recents = JSON.parse(json); } catch(e) { recents = []; }
+    renderRecents();
   }
 
   function renderPalette() {
@@ -73,19 +110,41 @@
       sw.onclick = () => applyColor(name, rgb);
       sw.innerHTML = `
         <div class="color" style="background: rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></div>
-        <div class="name">${name}</div>
+        <div class="name">${escHtml(name)}</div>
       `;
       grid.appendChild(sw);
     });
   }
 
+  function renderRecents() {
+    const list = document.getElementById('recentList');
+    list.innerHTML = '';
+    if (!recents || recents.length === 0) {
+      list.innerHTML = '<div class="empty">Henüz doku yüklenmemiş.</div>';
+      return;
+    }
+    recents.forEach(r => {
+      const it = document.createElement('div');
+      it.className = 'recent-item';
+      it.title = `${r.path}\n${r.tile_w_mm}×${r.tile_h_mm} mm`;
+      it.innerHTML = `<span class="icon">🖼</span><span class="name">${escHtml(r.name)}</span>`;
+      it.onclick = () => sketchup.apply_recent_texture(
+        r.path, r.name, parseFloat(r.tile_w_mm), parseFloat(r.tile_h_mm)
+      );
+      list.appendChild(it);
+    });
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"]/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
   function applyColor(name, rgb) {
     sketchup.apply_color(name, rgb[0], rgb[1], rgb[2]);
   }
-
-  function customColor() {
-    sketchup.custom_color();
-  }
+  function customColor()  { sketchup.custom_color(); }
+  function loadTexture()  { sketchup.load_texture(); }
 
   document.addEventListener('DOMContentLoaded', () => {
     if (typeof sketchup !== 'undefined') sketchup.palette_ready();

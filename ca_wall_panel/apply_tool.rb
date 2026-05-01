@@ -127,6 +127,8 @@ module CAWorks
         model.start_operation('CA-Wall Panel Düzenle', true)
         begin
           run_group.entities.clear!
+          assign_lambri_layer(model, run_group)
+          apply_default_material(model, run_group) unless run_group.material
           fill_run_group(run_group, path_pts, profile, height_mm.to_f, !!flip)
           model.commit_operation
           model.selection.clear
@@ -176,6 +178,8 @@ module CAWorks
         begin
           run_group = parent_entities.add_group
           run_group.name = "Lambri Hattı · #{profile[:code]} · h#{height_mm.round}mm"
+          assign_lambri_layer(model, run_group)
+          apply_default_material(model, run_group)
           fill_run_group(run_group, path_pts, profile, height_mm, flip)
 
           if run_group.entities.length == 0
@@ -194,6 +198,21 @@ module CAWorks
           UI.messagebox("Hata: #{e.message}\n\n#{e.backtrace.first(5).join("\n")}")
           nil
         end
+      end
+
+      def self.assign_lambri_layer(model, group)
+        layer = model.layers['Lambri'] || model.layers.add('Lambri')
+        group.layer = layer
+      rescue StandardError
+        nil
+      end
+
+      def self.apply_default_material(model, group)
+        return if group.material
+        mat = model.materials['CAWallPanel_Default'] ||
+              model.materials.add('CAWallPanel_Default')
+        mat.color = Sketchup::Color.new(245, 245, 240)
+        group.material = mat
       end
 
       def self.fill_run_group(run_group, path_pts, profile, height_mm, flip)

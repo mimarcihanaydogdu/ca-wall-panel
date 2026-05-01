@@ -1,9 +1,15 @@
 # ----------------------------------------------------------------
 #  CA-Wall Panel — Draw Tool (Kalem)
 #  ----------------------------------------------------------------
-#  Kullanıcı tıklayarak nokta nokta polyline çizer; Enter veya sağ
-#  tık ile bitirir, Esc ile iptal eder. Bitirince çizilen edge'ler
-#  modele eklenir ve ApplyTool.run_from_edges ile lambri uygulanır.
+#  Tıklayarak nokta nokta polyline çiz; Enter / sağ tık bitirir,
+#  Esc iptal eder. Bitirince edge'ler modele eklenir ve
+#  ApplyTool.run_from_edges çalışır.
+#
+#  • Eksen-snap: ikinci ve sonraki noktalarda InputPoint inferencing
+#    referansıyla pick — kırmızı / yeşil / mavi eksenlere kilitlenir
+#    (SU'nun standart line tool davranışı).
+#  • VCB: yükseklik input'u ile değiştirilebilir (örn. "3000" yazıp
+#    Enter → yükseklik 3000 mm). Mevcut yükseklik status bar'da görünür.
 # ----------------------------------------------------------------
 
 module CAWorks
@@ -14,56 +20,75 @@ module CAWorks
       VK_ESC_KEYS    = [27, 0x1B].freeze
 
       def initialize(height_mm:, flip:)
-        @height_mm  = height_mm.to_f
-        @flip       = !!flip
-        @points     = []
-        @hover_pt   = nil
-        @input_pt   = Sketchup::InputPoint.new
-        @cursor_id  = nil
+        @height_mm = height_mm.to_f
+        @flip      = !!flip
+        @points    = []
+        @hover_pt  = nil
+        @input_pt  = Sketchup::InputPoint.new
+        @last_ip   = Sketchup::InputPoint.new
+        @has_last  = false
       end
 
       def activate
-        Sketchup.set_status_text(
-          'CA Kalem · Sol tık: nokta ekle  |  Enter / Sağ tık: bitir  |  Esc: iptal',
-          SB_PROMPT
-        )
-        @points = []
+        update_status_and_vcb
+        @points    = []
+        @has_last  = false
         view = Sketchup.active_model.active_view
         view.invalidate if view
       end
 
-      def deactivate(view)
-        view.invalidate
-      end
+      def deactivate(view); view.invalidate; end
+      def resume(view);     view.invalidate; end
+      def suspend(view);    view.invalidate; end
 
-      def resume(view)
-        view.invalidate
-      end
+      # ---- INPUT ---------------------------------------------------
+      def enableVCB?; true; end
 
-      def suspend(view)
-        view.invalidate
+      def onUserText(text, view)
+        s = text.to_s.strip.gsub(',', '.')
+        # Yükseklikte mm bekleniyor; "2800mm" / "2800" ikisi de OK.
+        m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*(mm)?$/i)
+        if m
+          h = m[1].to_f
+          if h > 0
+            @height_mm = h
+            update_status_and_vcb
+            view.invalidate
+          else
+            UI.beep
+          end
+        else
+          UI.beep
+        end
+      rescue StandardError
+        UI.beep
       end
 
       def onMouseMove(_flags, x, y, view)
-        @input_pt.pick(view, x, y)
+        if @has_last
+          @input_pt.pick(view, x, y, @last_ip)
+        else
+          @input_pt.pick(view, x, y)
+        end
         @hover_pt = @input_pt.position
         view.invalidate
       end
 
       def onLButtonDown(_flags, x, y, view)
-        @input_pt.pick(view, x, y)
+        if @has_last
+          @input_pt.pick(view, x, y, @last_ip)
+        else
+          @input_pt.pick(view, x, y)
+        end
         pt = @input_pt.position
         @points << pt
+        @last_ip.copy!(@input_pt) if @last_ip.respond_to?(:copy!)
+        @has_last = true
         view.invalidate
       end
 
-      def onRButtonDown(_flags, _x, _y, _view)
-        finish_path
-      end
-
-      def onLButtonDoubleClick(_flags, _x, _y, _view)
-        finish_path
-      end
+      def onRButtonDown(_flags, _x, _y, _view); finish_path; end
+      def onLButtonDoubleClick(_flags, _x, _y, _view); finish_path; end
 
       def onKeyDown(key, _repeat, _flags, _view)
         if VK_RETURN_KEYS.include?(key)
@@ -73,12 +98,12 @@ module CAWorks
         end
       end
 
-      def onCancel(_reason, _view)
-        cancel
-      end
+      def onCancel(_reason, _view); cancel; end
 
+      # ---- ACTIONS -------------------------------------------------
       def cancel
-        @points = []
+        @points    = []
+        @has_last  = false
         Sketchup.active_model.active_view.invalidate
         Sketchup.active_model.select_tool(nil)
       end
@@ -87,6 +112,7 @@ module CAWorks
         if @points.size < 2
           UI.messagebox("En az 2 nokta gerekli.")
           @points = []
+          @has_last = false
           Sketchup.active_model.active_view.invalidate
           return
         end
@@ -107,19 +133,26 @@ module CAWorks
           end
 
           model.commit_operation
-        rescue StandardError => e
+        rescue StandardError => err
           model.abort_operation
-          UI.messagebox("Çizim hatası: #{e.message}")
+          UI.messagebox("Çizim hatası: #{err.message}")
           cancel
           return
         end
 
+        ApplyTool.last_height_mm  = @height_mm
+        ApplyTool.flip_orientation = @flip
         ApplyTool.run_from_edges(edges, @height_mm, @flip)
         @points = []
+        @has_last = false
         Sketchup.active_model.select_tool(nil)
       end
 
+      # ---- DRAW ---------------------------------------------------
       def draw(view)
+        # InputPoint kendi inferencing renklerini çiziyor (eksen rehberleri vb.)
+        @input_pt.draw(view) if @input_pt.display?
+
         return if @points.empty?
 
         view.line_width = 2
@@ -145,6 +178,17 @@ module CAWorks
         @points.each { |p| bb.add(p) }
         bb.add(@hover_pt) if @hover_pt
         bb
+      end
+
+      # ---- STATUS / VCB -------------------------------------------
+      def update_status_and_vcb
+        Sketchup.set_status_text(
+          "CA Kalem · Sol tık: nokta · Enter/Sağ tık: bitir · Esc: iptal · " \
+          "VCB: yükseklik (mm)",
+          SB_PROMPT
+        )
+        Sketchup.set_status_text("Yükseklik:", SB_VCB_LABEL)
+        Sketchup.set_status_text("#{@height_mm.round} mm",  SB_VCB_VALUE)
       end
 
     end
