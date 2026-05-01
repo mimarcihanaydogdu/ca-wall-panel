@@ -27,6 +27,16 @@ module CAWorks
       DEFAULT_SECTION = 'caworks_ca_wall_panel'.freeze
       CUSTOM_KEY      = 'custom_profiles_v1'.freeze
 
+      # Birincil depolama: kullanıcı home klasöründe JSON dosyası
+      # (Sketchup.write_default'tan daha güvenilir; Türkçe karakter ve
+      # uzun string sorunlarına karşı dayanıklı). Defaults eski sürümden
+      # gelen veriler için fallback olarak okunur.
+      def self.custom_file
+        File.join(Dir.home, '.caworks_ca_wall_panel_profiles.json')
+      rescue StandardError
+        File.join(File.dirname(File.dirname(__FILE__)), '.caworks_custom_profiles.json')
+      end
+
       DATA = [
         {
           code: '08126-01', name: 'Düz 8x126', width_mm: 126, depth_mm: 8,
@@ -100,9 +110,29 @@ module CAWorks
       #  CUSTOM PROFIL DEPOLAMA
       # ------------------------------------------------------------
       def self.custom_profiles
-        json = Sketchup.read_default(DEFAULT_SECTION, CUSTOM_KEY, '[]')
-        arr = JSON.parse(json) rescue []
-        arr.map { |h| symbolize_profile(h) }
+        json = read_custom_json
+        arr  = JSON.parse(json) rescue nil
+        return [] unless arr.is_a?(Array)
+        arr.map { |h| symbolize_profile(h) rescue nil }.compact
+      rescue StandardError => e
+        warn "[CA-Wall Panel] custom_profiles read error: #{e.message}"
+        []
+      end
+
+      def self.read_custom_json
+        # 1) Dosya varsa onu kullan
+        path = custom_file
+        if File.exist?(path)
+          begin
+            return File.read(path, mode: 'rb:UTF-8')
+          rescue StandardError => e
+            warn "[CA-Wall Panel] custom file read failed (#{path}): #{e.message}"
+          end
+        end
+        # 2) Eski Sketchup defaults'tan migrate
+        legacy = Sketchup.read_default(DEFAULT_SECTION, CUSTOM_KEY, nil)
+        return legacy if legacy.is_a?(String) && !legacy.empty?
+        '[]'
       end
 
       def self.save_custom(profile)
@@ -115,10 +145,10 @@ module CAWorks
         return [false, 'Derinlik > 0 olmalı.']      if profile[:depth_mm].to_f  <= 0
         return [false, 'Standart boy > 0 olmalı.']  if profile[:length_mm].to_f <= 0
 
-        pattern = profile[:pattern].to_sym rescue :flat
+        pattern = (profile[:pattern].respond_to?(:to_sym) ? profile[:pattern].to_sym : :flat) rescue :flat
         cleaned = {
-          code: profile[:code].to_s.strip,
-          name: profile[:name].to_s.strip,
+          code:      profile[:code].to_s.strip,
+          name:      profile[:name].to_s.strip,
           width_mm:  profile[:width_mm].to_f,
           depth_mm:  profile[:depth_mm].to_f,
           length_mm: profile[:length_mm].to_f,
@@ -129,19 +159,57 @@ module CAWorks
 
         list = custom_profiles.reject { |p| p[:code] == cleaned[:code] }
         list << cleaned
-        write_custom(list)
+
+        ok, err = write_custom(list)
+        unless ok
+          return [false, "Kaydedilemedi: #{err}"]
+        end
+
+        # Doğrulama: dosyayı geri okuyup yeni profilin gerçekten orada olduğunu kontrol et
+        verify = custom_profiles.find { |p| p[:code] == cleaned[:code] }
+        if verify.nil?
+          return [false, "Kayıt sonrası doğrulama başarısız (#{custom_file})"]
+        end
+
+        warn "[CA-Wall Panel] custom profile saved: #{cleaned[:code]} (toplam: #{list.size})"
         [true, cleaned]
       end
 
       def self.delete_custom(code)
         list = custom_profiles.reject { |p| p[:code] == code.to_s }
-        write_custom(list)
-        true
+        ok, err = write_custom(list)
+        warn "[CA-Wall Panel] custom profile deleted: #{code} → #{ok ? 'OK' : err}"
+        ok
       end
 
+      # Geri dönüş: [ok, error_msg]
       def self.write_custom(list)
         json = JSON.generate(list.map { |p| stringify_profile(p) })
-        Sketchup.write_default(DEFAULT_SECTION, CUSTOM_KEY, json)
+
+        path = custom_file
+        begin
+          dir = File.dirname(path)
+          require 'fileutils'
+          FileUtils.mkdir_p(dir) unless File.directory?(dir)
+          File.write(path, json, mode: 'wb:UTF-8')
+        rescue StandardError => e
+          warn "[CA-Wall Panel] write_custom file failed: #{e.message}"
+          # Dosyaya yazılamadı; defaults'a düş
+          begin
+            Sketchup.write_default(DEFAULT_SECTION, CUSTOM_KEY, json)
+            return [true, nil]
+          rescue StandardError => e2
+            return [false, "Dosya & defaults yazımı başarısız: #{e.message} / #{e2.message}"]
+          end
+        end
+
+        # Hem dosya hem defaults'a yaz (en iyi senaryo, geriye dönüm yok)
+        begin
+          Sketchup.write_default(DEFAULT_SECTION, CUSTOM_KEY, json)
+        rescue StandardError
+          nil # defaults yazılmazsa sorun değil; dosyada var
+        end
+        [true, nil]
       end
 
       def self.symbolize_profile(h)

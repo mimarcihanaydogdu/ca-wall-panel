@@ -136,6 +136,14 @@
   }
   .form-status.ok   { background: #e8f5e8; border: 1px solid #a8d8a8; color: #1f5c1f; display:block; }
   .form-status.err  { background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15; display:block; }
+  .custom-list {
+    margin-top: 8px; padding: 6px 8px; background: #f0f0f0;
+    border-radius: 3px; font-size: 11px; color: #555;
+  }
+  .custom-list .storage-path {
+    margin-top: 4px; font-size: 10px; color: #888; word-break: break-all;
+    font-family: ui-monospace, Menlo, monospace;
+  }
 </style>
 </head>
 <body>
@@ -173,10 +181,10 @@
   <summary>+ Özel Profil Ekle</summary>
   <div class="form-grid">
     <label>Kod
-      <input type="text" id="cp_code" placeholder="ÖZEL-001">
+      <input type="text" id="cp_code" value="OZEL-001">
     </label>
     <label>Ad
-      <input type="text" id="cp_name" placeholder="Özel Lambri">
+      <input type="text" id="cp_name" value="Özel Lambri">
     </label>
     <label>Genişlik (mm)
       <input type="number" id="cp_w" value="126" min="1" step="1">
@@ -206,6 +214,10 @@
     <button class="tertiary" onclick="resetCustomForm()">Temizle</button>
   </div>
   <div class="form-status" id="cpStatus"></div>
+  <div class="custom-list" id="customListInfo">
+    <em>Mevcut özel profiller (depoda):</em> <span id="customListNames">—</span>
+    <div class="storage-path" id="storagePath"></div>
+  </div>
 </details>
 
 <div class="actions">
@@ -241,6 +253,21 @@
     renderGrid();
     updateProfileLenInfo();
     validateHeight();
+    updateCustomList();
+  }
+
+  function updateCustomList() {
+    const span = document.getElementById('customListNames');
+    if (!span) return;
+    const customs = profiles.filter(p => p.custom);
+    span.textContent = customs.length === 0 ?
+      '(henüz yok)' :
+      customs.map(p => p.code).join(', ');
+  }
+
+  function setStoragePath(path) {
+    const el = document.getElementById('storagePath');
+    if (el) el.textContent = path ? ('Depo: ' + path) : '';
   }
 
   function setDefaultHeight(h) {
@@ -558,6 +585,26 @@
 
   function saveCustomProfile() {
     const data = readCustomForm();
+    const el = document.getElementById('cpStatus');
+
+    if (!data.code) {
+      el.className = 'form-status err';
+      el.textContent = 'Profil kodu boş olamaz.';
+      return;
+    }
+    if (!data.name) {
+      el.className = 'form-status err';
+      el.textContent = 'Profil adı boş olamaz.';
+      return;
+    }
+    if (!(data.width_mm > 0 && data.depth_mm > 0 && data.length_mm > 0)) {
+      el.className = 'form-status err';
+      el.textContent = 'Genişlik, derinlik ve standart boy 0\'dan büyük olmalı.';
+      return;
+    }
+
+    el.className = 'form-status';
+    el.textContent = '';
     sketchup.save_custom_profile(JSON.stringify(data));
   }
 
@@ -583,8 +630,16 @@
   }
 
   function resetCustomForm() {
-    document.getElementById('cp_code').value = '';
-    document.getElementById('cp_name').value = '';
+    // Bir sonraki için akıllı varsayılan kod
+    const customs = profiles.filter(p => p.custom);
+    let n = customs.length + 1;
+    let next = 'OZEL-' + String(n).padStart(3, '0');
+    while (profiles.find(p => p.code === next)) {
+      n += 1;
+      next = 'OZEL-' + String(n).padStart(3, '0');
+    }
+    document.getElementById('cp_code').value = next;
+    document.getElementById('cp_name').value = 'Özel Lambri';
     document.getElementById('cp_w').value = 126;
     document.getElementById('cp_d').value = 18;
     document.getElementById('cp_l').value = 2800;

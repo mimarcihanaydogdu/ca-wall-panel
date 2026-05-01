@@ -66,6 +66,8 @@ module CAWorks
       return unless @profile_dialog
       json = profiles_for_js.to_json
       @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
+      path = Profiles.custom_file rescue ''
+      @profile_dialog.execute_script("setStoragePath(#{path.to_s.inspect});")
     end
 
     def self.profiles_for_js
@@ -195,6 +197,7 @@ module CAWorks
     # save_custom_profile callback'inin tamamı bu fonksiyona alınmıştır →
     # her hata JSON sonucu olarak JS'e döner; dialog kilitlenmez.
     def self.save_custom_profile_safely(json_str)
+      warn "[CA-Wall Panel] save_custom raw input: #{json_str.to_s[0, 400]}"
       data = JSON.parse(json_str.to_s)
       sym  = {
         code:      data['code'],
@@ -206,17 +209,23 @@ module CAWorks
         params:    (data['params']  || {})
       }
       ok, payload = Profiles.save_custom(sym)
+      warn "[CA-Wall Panel] save_custom result: ok=#{ok} payload=#{payload.inspect}"
       if ok
+        all_codes = Profiles.all.map { |p| p[:code] }
+        warn "[CA-Wall Panel] all profile codes after save: #{all_codes.inspect}"
         send_profiles_to_dialog
         { ok: true,
-          message:      "Özel profil kaydedildi: #{payload[:code]}",
+          message:      "Özel profil kaydedildi: #{payload[:code]} " \
+                        "(toplam özel: #{Profiles.custom_profiles.size})",
           profile_code: payload[:code] }
       else
         { ok: false, message: payload.to_s }
       end
     rescue JSON::ParserError => e
+      warn "[CA-Wall Panel] JSON parse error: #{e.message}"
       { ok: false, message: "Form verisi okunamadı: #{e.message}" }
     rescue StandardError => e
+      warn "[CA-Wall Panel] save error: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
       { ok: false, message: "Kayıt hatası: #{e.message}" }
     end
 
