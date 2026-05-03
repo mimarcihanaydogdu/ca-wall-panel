@@ -403,7 +403,7 @@ module CAWorks
       def self.build_profile_points(profile)
         w = profile[:width_mm].mm
         d = profile[:depth_mm].mm
-        case profile[:pattern]
+        pts = case profile[:pattern]
         when :flat            then flat_points(w, d)
         when :v_groove        then v_groove_points(w, d, profile[:params])
         when :double_groove   then double_groove_points(w, d, profile[:params])
@@ -419,6 +419,23 @@ module CAWorks
         else
           flat_points(w, d)
         end
+        dedupe_consecutive(pts)
+      end
+
+      # Geom::Point3d listesinden ardışık ve uç-uç çakışan noktaları
+      # eler — SketchUp.add_face "Duplicate points in array" hatasının
+      # önüne geçer.
+      def self.dedupe_consecutive(pts, tol_inch = 1.0e-4)
+        out = []
+        pts.each do |p|
+          if out.empty? || (p - out.last).length > tol_inch
+            out << p
+          end
+        end
+        if out.size >= 3 && (out.first - out.last).length < tol_inch
+          out.pop
+        end
+        out
       end
 
       # ============================================================
@@ -511,7 +528,9 @@ module CAWorks
           Geom::Point3d.new(w, 0, 0),
           Geom::Point3d.new(w, d, 0)
         ]
-        seg.times do |i|
+        # i=0'da (cos=1, sin=0) bu nokta zaten eklenmiş (w, d) ile çakışır
+        # → 1..seg arasında üret.
+        (1...seg).each do |i|
           t   = i / seg.to_f
           ang = t * Math::PI
           x   = w / 2.0 + (w / 2.0) * Math.cos(ang)
@@ -557,7 +576,10 @@ module CAWorks
         rr = (p[:rib_radius] || 4.0).mm
         seg_per_rib = 8
         rib_w = w / n.to_f
-        actual_r = [rib_w / 2.0, rr].min
+        # rr panel'in yarısından büyükse rib_w/2 ile eşitlenir → ilk
+        # rib'in ilk noktası (w, d) ile çakışırdı; r'yi hafif küçültürüz.
+        actual_r = [rib_w / 2.0 - 1.0e-4, rr].min
+        actual_r = 0.0 if actual_r < 0
         pts = [
           Geom::Point3d.new(0, 0, 0),
           Geom::Point3d.new(w, 0, 0),
@@ -565,7 +587,7 @@ module CAWorks
         ]
         (n - 1).downto(0) do |i|
           cx = (i + 0.5) * rib_w
-          seg_per_rib.times do |k|
+          (0..seg_per_rib).each do |k|
             t   = k / seg_per_rib.to_f
             ang = t * Math::PI
             x   = cx + actual_r * Math.cos(ang)
@@ -605,6 +627,9 @@ module CAWorks
       # oluşur (gerçek lambri görünümü).
       def self.chamfered_edge_points(w, d, p)
         c  = (p[:chamfer] || 1.5).mm
+        # Güvenlik: pah sıfır olamaz, panel boyutunun yarısını da geçemez
+        c = 0.5.mm if c < 0.1.mm
+        c = [c, w / 2.5, d / 2.0].min
         gw = p[:groove_width].to_f.mm
         gd = p[:groove_depth].to_f.mm
         cx = w / 2.0

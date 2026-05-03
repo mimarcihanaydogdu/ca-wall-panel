@@ -37,7 +37,8 @@ module CAWorks
           model.entities.each do |e|
             next unless e.respond_to?(:hidden?)
             next if e.hidden?
-            next if panel_run?(e)
+            # Panel run ise ya da iç içe panel run barındırıyorsa görünür kalsın.
+            next if contains_panel_run?(e)
 
             e.hidden = true
             hidden_ids << e.persistent_id
@@ -91,6 +92,24 @@ module CAWorks
       def self.panel_run?(e)
         e.is_a?(Sketchup::Group) &&
           e.get_attribute(ATTR_DICT, 'is_panel_run') == true
+      end
+
+      # Lambri Hattı, başka nesnelerle aynı grup/component içine konmuş
+      # olabilir. Bu durumda parent'ı gizlersek lambri de kaybolur.
+      # Bu fonksiyon: entity panel run mu, ya da içinde herhangi bir
+      # derinlikte panel run barındırıyor mu kontrolü.
+      def self.contains_panel_run?(e, depth = 0)
+        return false if depth > 24       # tedbir: sonsuz döngüyü kes
+        return true  if panel_run?(e)
+        if e.is_a?(Sketchup::Group)
+          e.entities.any? { |c| contains_panel_run?(c, depth + 1) }
+        elsif e.is_a?(Sketchup::ComponentInstance)
+          defn = e.definition rescue nil
+          return false unless defn
+          defn.entities.any? { |c| contains_panel_run?(c, depth + 1) }
+        else
+          false
+        end
       end
 
     end

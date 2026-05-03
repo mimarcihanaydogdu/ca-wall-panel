@@ -6,10 +6,14 @@
 #  ApplyTool.run_from_edges çalışır.
 #
 #  • Eksen-snap: ikinci ve sonraki noktalarda InputPoint inferencing
-#    referansıyla pick — kırmızı / yeşil / mavi eksenlere kilitlenir
-#    (SU'nun standart line tool davranışı).
-#  • VCB: yükseklik input'u ile değiştirilebilir (örn. "3000" yazıp
-#    Enter → yükseklik 3000 mm). Mevcut yükseklik status bar'da görünür.
+#    referansıyla pick — kırmızı / yeşil / mavi eksenlere kilitlenir.
+#  • Renkli eksen kılavuzu: hover ile son nokta arasındaki çizgi
+#    eksen yönündeyse o eksenin rengiyle (kırmızı / yeşil / mavi)
+#    çizilir. Aksi halde gri.
+#  • Soft panel ön-izleme: çizilen polyline boyunca her panel için
+#    yarı-saydam wireframe kutusu görünür → kullanıcı yerleşimi
+#    çizmeden görür.
+#  • VCB: yükseklik input'u ile değiştirilebilir.
 # ----------------------------------------------------------------
 
 module CAWorks
@@ -19,9 +23,25 @@ module CAWorks
       VK_RETURN_KEYS = [13, 0x0D, 10].freeze
       VK_ESC_KEYS    = [27, 0x1B].freeze
 
-      def initialize(height_mm:, flip:)
-        @height_mm = height_mm.to_f
-        @flip      = !!flip
+      AXIS_TOL_DEG = 2.0
+      RED_AXIS     = Geom::Vector3d.new(1, 0, 0)
+      GREEN_AXIS   = Geom::Vector3d.new(0, 1, 0)
+      BLUE_AXIS    = Geom::Vector3d.new(0, 0, 1)
+
+      def initialize(height_mm:, flip:, profile_code: nil)
+        @height_mm     = height_mm.to_f
+        @flip          = !!flip
+        @profile_code  = profile_code
+        if profile_code
+          p = Profiles.find(profile_code)
+          if p
+            @profile_w_mm = p[:width_mm].to_f
+            @profile_d_mm = p[:depth_mm].to_f
+          end
+        end
+        @profile_w_mm ||= 126.0
+        @profile_d_mm ||= 18.0
+
         @points    = []
         @hover_pt  = nil
         @input_pt  = Sketchup::InputPoint.new
@@ -41,12 +61,11 @@ module CAWorks
       def resume(view);     view.invalidate; end
       def suspend(view);    view.invalidate; end
 
-      # ---- INPUT ---------------------------------------------------
+      # ---- INPUT --------------------------------------------------
       def enableVCB?; true; end
 
       def onUserText(text, view)
         s = text.to_s.strip.gsub(',', '.')
-        # Yükseklikte mm bekleniyor; "2800mm" / "2800" ikisi de OK.
         m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*(mm)?$/i)
         if m
           h = m[1].to_f
@@ -100,7 +119,7 @@ module CAWorks
 
       def onCancel(_reason, _view); cancel; end
 
-      # ---- ACTIONS -------------------------------------------------
+      # ---- ACTIONS ------------------------------------------------
       def cancel
         @points    = []
         @has_last  = false
@@ -150,26 +169,119 @@ module CAWorks
 
       # ---- DRAW ---------------------------------------------------
       def draw(view)
-        # InputPoint kendi inferencing renklerini çiziyor (eksen rehberleri vb.)
-        @input_pt.draw(view) if @input_pt.display?
+        # InputPoint inferencing rehberlerini çizdirmeyi her zaman dene
+        # (display? false döndürse bile axis snap işaretleri görünür)
+        @input_pt.draw(view) rescue nil
 
-        return if @points.empty?
-
-        view.line_width = 2
-        view.drawing_color = Sketchup::Color.new(245, 166, 35)
+        # Mevcut polyline turuncu
         if @points.size >= 2
+          view.line_width = 2
+          view.drawing_color = Sketchup::Color.new(245, 166, 35)
           view.draw(GL_LINE_STRIP, @points)
         end
 
-        if @hover_pt
-          view.line_width    = 1
-          view.line_stipple  = '-'
-          view.drawing_color = Sketchup::Color.new(160, 160, 160)
+        # Hover'a giden çizgi — eksen yönünde ise o renk
+        if @hover_pt && !@points.empty?
+          view.line_width = 2
+          color = axis_color(@points.last, @hover_pt)
+          if color
+            view.line_stipple  = ''
+            view.drawing_color = color
+          else
+            view.line_stipple  = '-'
+            view.drawing_color = Sketchup::Color.new(160, 160, 160)
+          end
           view.draw(GL_LINES, [@points.last, @hover_pt])
-          view.line_stipple  = ''
+          view.line_stipple = ''
         end
 
-        view.draw_points(@points, 8, 2, Sketchup::Color.new(245, 166, 35))
+        # Soft 3D panel ön-izleme (wireframe kutular)
+        draw_panel_preview(view)
+
+        # Tıklanan nokta noktalar
+        view.draw_points(@points, 8, 2, Sketchup::Color.new(245, 166, 35)) unless @points.empty?
+      end
+
+      def axis_color(from, to)
+        v = to - from
+        return nil if v.length < 1.0e-6
+        v = v.clone
+        v.normalize!
+        cos_tol = Math.cos(AXIS_TOL_DEG * Math::PI / 180.0)
+
+        if v.dot(RED_AXIS).abs > cos_tol
+          Sketchup::Color.new(220, 30, 30)
+        elsif v.dot(GREEN_AXIS).abs > cos_tol
+          Sketchup::Color.new(30, 170, 30)
+        elsif v.dot(BLUE_AXIS).abs > cos_tol
+          Sketchup::Color.new(40, 60, 220)
+        else
+          nil
+        end
+      end
+
+      def draw_panel_preview(view)
+        return unless @profile_w_mm && @profile_d_mm
+
+        all_pts = @points.dup
+        all_pts << @hover_pt if @hover_pt
+        return if all_pts.size < 2
+
+        panel_w_inch = @profile_w_mm.mm
+        panel_d_inch = @profile_d_mm.mm
+        height_inch  = @height_mm.mm
+        return if panel_w_inch <= 0 || panel_d_inch <= 0 || height_inch <= 0
+
+        # Polyline'dan segmentler ve toplam uzunluk
+        segs = []
+        cumulative = 0.0
+        (0...(all_pts.size - 1)).each do |i|
+          a = all_pts[i]; b = all_pts[i + 1]
+          len = (b - a).length
+          next if len < 1.0e-9
+          segs << { a: a, b: b, length: len, cum_start: cumulative }
+          cumulative += len
+        end
+        return if segs.empty?
+
+        # ApplyTool.walk_chord_points'i kullan (aynı algoritma → tutarlı)
+        chord_pts = ApplyTool.walk_chord_points(segs, panel_w_inch)
+        return if chord_pts.size < 2
+
+        z_up = Geom::Vector3d.new(0, 0, 1)
+        soft_color = Sketchup::Color.new(245, 166, 35, 90)
+        view.line_width = 1
+        view.drawing_color = soft_color
+        view.line_stipple = ''
+
+        (0...(chord_pts.size - 1)).each do |i|
+          p_a = chord_pts[i]
+          p_b = chord_pts[i + 1]
+          x_axis = p_b - p_a
+          next if x_axis.length < 1.0e-9
+          x_axis.normalize!
+          y_axis = z_up * x_axis
+          next if y_axis.length < 1.0e-9
+          y_axis.normalize!
+          y_axis.reverse! if @flip
+
+          dy = y_axis.clone; dy.length = panel_d_inch
+          dz = z_up.clone;   dz.length = height_inch
+
+          bl = p_a
+          br = p_b
+          fl = bl.offset(dy)
+          fr = br.offset(dy)
+          bl_t = bl.offset(dz)
+          br_t = br.offset(dz)
+          fl_t = fl.offset(dz)
+          fr_t = fr.offset(dz)
+
+          # 12 kenarlı kutu
+          view.draw(GL_LINE_LOOP, [bl, br, fr, fl])
+          view.draw(GL_LINE_LOOP, [bl_t, br_t, fr_t, fl_t])
+          view.draw(GL_LINES, [bl, bl_t, br, br_t, fr, fr_t, fl, fl_t])
+        end
       end
 
       def getExtents
@@ -177,6 +289,11 @@ module CAWorks
         bb.add(Sketchup.active_model.bounds.min) if Sketchup.active_model.bounds
         @points.each { |p| bb.add(p) }
         bb.add(@hover_pt) if @hover_pt
+        # Preview kutular için ekstra yükseklik dahil et
+        if @hover_pt && @height_mm
+          top = @hover_pt.offset(Geom::Vector3d.new(0, 0, @height_mm.mm))
+          bb.add(top)
+        end
         bb
       end
 

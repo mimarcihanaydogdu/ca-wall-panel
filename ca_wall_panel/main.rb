@@ -164,7 +164,7 @@ module CAWorks
         ApplyTool.flip_orientation    = flip
         ApplyTool.last_height_mm      = height_mm.to_f
         Sketchup.active_model.select_tool(
-          DrawTool.new(height_mm: height_mm.to_f, flip: flip)
+          DrawTool.new(height_mm: height_mm.to_f, flip: flip, profile_code: code)
         )
       end
 
@@ -302,8 +302,9 @@ module CAWorks
     def self.start_draw_tool
       Sketchup.active_model.select_tool(
         DrawTool.new(
-          height_mm: ApplyTool.last_height_mm,
-          flip:      ApplyTool.flip_orientation
+          height_mm:    ApplyTool.last_height_mm,
+          flip:         ApplyTool.flip_orientation,
+          profile_code: ApplyTool.active_profile_code
         )
       )
     end
