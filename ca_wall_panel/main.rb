@@ -9,6 +9,7 @@ require File.join(File.dirname(__FILE__), 'profiles')
 require File.join(File.dirname(__FILE__), 'components')
 require File.join(File.dirname(__FILE__), 'apply_tool')
 require File.join(File.dirname(__FILE__), 'draw_tool')
+require File.join(File.dirname(__FILE__), 'skirting')
 require File.join(File.dirname(__FILE__), 'metraj')
 require File.join(File.dirname(__FILE__), 'isolate_tool')
 require File.join(File.dirname(__FILE__), 'colorize_tool')
@@ -66,9 +67,26 @@ module CAWorks
       return unless @profile_dialog
       json = profiles_for_js.to_json
       @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
+      sk_json = skirtings_for_js.to_json
+      @profile_dialog.execute_script("loadSkirtings(#{sk_json.inspect});")
       path = Profiles.custom_file rescue ''
       @profile_dialog.execute_script("setStoragePath(#{path.to_s.inspect});")
       send_recents_to_dialog
+    end
+
+    def self.skirtings_for_js
+      Skirting.all.map do |p|
+        params_h = (p[:params] || {}).each_with_object({}) { |(k, v), o| o[k.to_s] = v }
+        {
+          code:      p[:code],
+          name:      p[:name],
+          height_mm: p[:height_mm].to_f,
+          depth_mm:  p[:depth_mm].to_f,
+          length_mm: p[:length_mm].to_f,
+          pattern:   p[:pattern].to_s,
+          params:    params_h
+        }
+      end
     end
 
     def self.send_recents_to_dialog
@@ -99,12 +117,12 @@ module CAWorks
       @profile_dialog = UI::HtmlDialog.new(
         dialog_title:    'CA-Wall Panel',
         preferences_key: 'caworks_ca_wall_panel',
-        scrollable:      true,
+        scrollable:      false,
         resizable:       true,
-        width:           480,
-        height:          760,
-        min_width:       360,
-        min_height:      500,
+        width:           520,
+        height:          720,
+        min_width:       400,
+        min_height:      560,
         style:           UI::HtmlDialog::STYLE_DIALOG
       )
       @profile_dialog.set_file(html_path)
@@ -136,20 +154,20 @@ module CAWorks
         Profiles.add_recent(code)
       end
 
-      @profile_dialog.add_action_callback('apply_profile') do |_ctx, code, flip, height_mm|
+      @profile_dialog.add_action_callback('apply_profile') do |_ctx, code, flip, height_mm, room_name|
         ApplyTool.active_profile_code = code
         ApplyTool.flip_orientation    = flip
         Profiles.add_recent(code)
-        ApplyTool.run(height_mm.to_f)
+        ApplyTool.run(height_mm.to_f, room_name.to_s)
       end
 
-      @profile_dialog.add_action_callback('update_run') do |_ctx, code, flip, height_mm|
+      @profile_dialog.add_action_callback('update_run') do |_ctx, code, flip, height_mm, room_name|
         run = ApplyTool.editing_run
         if run.nil? || !run.respond_to?(:valid?) || !run.valid?
           UI.messagebox("Düzenlenecek hat seçili değil.")
         else
           profile = Profiles.find(code) || Profiles.all.first
-          ApplyTool.regenerate_run(run, profile, height_mm.to_f, flip)
+          ApplyTool.regenerate_run(run, profile, height_mm.to_f, flip, room_name.to_s)
         end
         ApplyTool.editing_run = nil
         @profile_dialog.execute_script("cancelEdit();") if @profile_dialog
@@ -159,13 +177,19 @@ module CAWorks
         ApplyTool.editing_run = nil
       end
 
-      @profile_dialog.add_action_callback('draw_with_profile') do |_ctx, code, flip, height_mm|
+      @profile_dialog.add_action_callback('draw_with_profile') do |_ctx, code, flip, height_mm, room_name|
         ApplyTool.active_profile_code = code
         ApplyTool.flip_orientation    = flip
         ApplyTool.last_height_mm      = height_mm.to_f
+        ApplyTool.last_room_name      = room_name.to_s if room_name
         Sketchup.active_model.select_tool(
           DrawTool.new(height_mm: height_mm.to_f, flip: flip, profile_code: code)
         )
+      end
+
+      # ---- SÜPÜRGELİK ------------------------------------------
+      @profile_dialog.add_action_callback('apply_skirting') do |_ctx, code, room_name|
+        Skirting.run(code, room_name.to_s)
       end
 
       @profile_dialog.add_action_callback('edit_selected') do |_ctx|

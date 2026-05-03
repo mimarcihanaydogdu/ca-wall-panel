@@ -27,7 +27,7 @@ module CAWorks
       DEFAULT_SECTION = 'caworks_ca_wall_panel'.freeze
       CUSTOM_KEY      = 'custom_profiles_v1'.freeze
       RECENTS_KEY     = 'recent_profile_codes_v1'.freeze
-      RECENTS_LIMIT   = 6
+      RECENTS_LIMIT   = 5
 
       # Birincil depolama: kullanıcı home klasöründe JSON dosyası
       # (Sketchup.write_default'tan daha güvenilir; Türkçe karakter ve

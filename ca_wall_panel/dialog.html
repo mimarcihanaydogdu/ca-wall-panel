@@ -5,127 +5,122 @@
 <title>CA-Wall Panel</title>
 <style>
   * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; }
   body {
+    display: flex; flex-direction: column;
     font-family: -apple-system, "Segoe UI", Tahoma, sans-serif;
-    margin: 0; padding: 12px;
     background: #fafafa; color: #222;
     font-size: 12px;
+    overflow: hidden;
     -webkit-font-smoothing: antialiased;
   }
+  .top { padding: 10px 12px 0 12px; flex: 0 0 auto; }
   h2 {
     margin: 0 0 4px; font-size: 15px;
     background: linear-gradient(90deg, #b56a00, #d98e0a);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    color: #b56a00;  /* fallback */
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; color: #b56a00;
     letter-spacing: -0.2px;
   }
-  h3 { margin: 12px 0 6px; font-size: 12px; color: #555; }
-  .sub { color: #888; margin-bottom: 10px; font-size: 11px; }
+  .sub { color: #888; margin-bottom: 6px; font-size: 10.5px; }
 
   .edit-banner {
     background: #e8f5ff; border: 1px solid #7cc7ff; color: #003a66;
-    padding: 6px 10px; border-radius: 4px; margin-bottom: 10px;
+    padding: 5px 8px; border-radius: 4px; margin-bottom: 6px;
     font-size: 11px; display: none;
   }
   .edit-banner.visible { display: block; }
   .edit-banner button {
-    background: #555; color: #fff; border: none; padding: 3px 8px;
+    background: #555; color: #fff; border: none; padding: 2px 7px;
     border-radius: 3px; font-size: 10px; cursor: pointer; margin-left: 6px;
   }
 
-  .hint {
-    background: #fffbe6; border: 1px solid #f5d76e;
-    padding: 6px 8px; border-radius: 4px; margin-bottom: 10px;
-    font-size: 11px; color: #6a4f00;
+  .controls-row {
+    display: flex; gap: 6px; align-items: center; margin-bottom: 6px;
+    flex-wrap: wrap;
   }
-
-  .height-row {
-    background: #fff; border: 1px solid #ddd; border-radius: 6px;
-    padding: 8px 10px; margin-bottom: 10px;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  .controls-row label { font-size: 10.5px; color: #555; font-weight: 600; }
+  .controls-row input[type=number],
+  .controls-row input[type=text] {
+    padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px;
+    font-size: 12px; background: #fff;
   }
-  .height-row label { font-weight: 600; font-size: 11px; }
-  .height-row input[type=number] {
-    width: 90px; padding: 4px 6px;
-    border: 1px solid #bbb; border-radius: 3px; font-size: 12px;
+  #height { width: 70px; }
+  #room   { width: 110px; }
+  .controls-row .info {
+    margin-left: auto; font-size: 10.5px; color: #888;
   }
-  .unit { font-size: 11px; color: #666; }
-  .profile-len-info { color: #666; font-size: 11px; margin-left: auto; }
-
   .checkbox-row {
     display: flex; align-items: center; gap: 6px;
-    margin-bottom: 10px; font-size: 11px;
+    margin-bottom: 4px; font-size: 11px;
   }
-
   .warn {
-    width: 100%;
-    background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15;
-    padding: 4px 8px; border-radius: 3px; font-size: 11px;
-    margin-top: 4px;
+    width: 100%; background: #fdecea; border: 1px solid #f5b3ad;
+    color: #7a1f15; padding: 3px 7px; border-radius: 3px;
+    font-size: 10.5px; margin-bottom: 4px;
   }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
-    gap: 6px;
-    margin-bottom: 10px;
+  .tabs {
+    display: flex; gap: 4px; border-bottom: 2px solid #f5d76e;
+    margin-top: 6px;
   }
+  .tab {
+    padding: 6px 12px; cursor: pointer; font-size: 11px;
+    color: #888; font-weight: 600;
+    border: 1px solid transparent; border-bottom: none;
+    border-radius: 4px 4px 0 0;
+  }
+  .tab:hover { color: #b56a00; }
+  .tab.active {
+    background: #fff; color: #b56a00;
+    border-color: #f5d76e; border-bottom: 2px solid #fff;
+    margin-bottom: -2px;
+  }
+
+  .tab-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px 12px;
+    background: #fff;
+    border-top: 1px solid #f5d76e;
+  }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
   .recents-row {
     background: linear-gradient(135deg, #fff5e1, #fffaf0);
-    border: 1px solid #f5d76e;
-    border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;
+    border: 1px solid #f5d76e; border-radius: 5px;
+    padding: 5px 7px; margin-bottom: 6px;
     box-shadow: 0 1px 2px rgba(245,166,35,0.08);
   }
   .recents-label {
-    font-size: 10px; color: #6a4f00; font-weight: 700;
+    font-size: 9.5px; color: #6a4f00; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.5px;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
   .recents-strip {
-    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+    display: flex; gap: 5px; overflow-x: auto;
   }
-  .recent-card {
-    flex: 0 0 86px;
+  .recent-card, .card {
     background: #fff; border: 1.5px solid #e0e0e0; border-radius: 5px;
     padding: 4px; cursor: pointer; text-align: center;
-    transition: all 0.15s ease;
+    transition: all 0.12s ease;
     box-shadow: 0 1px 1px rgba(0,0,0,0.03);
-  }
-  .recent-card:hover {
-    border-color: #f5a623;
-    box-shadow: 0 2px 6px rgba(245,166,35,0.18);
-    transform: translateY(-1px);
-  }
-  .recent-card.active {
-    border-color: #f5a623;
-    background: linear-gradient(135deg, #fffaf0, #fff5e1);
-    box-shadow: 0 2px 6px rgba(245,166,35,0.22);
-  }
-  .recent-card svg { width: 100%; height: 32px; display: block; }
-  .recent-card .code { font-size: 10px; font-weight: 600; margin-top: 2px; }
-
-  /* Ana profil ızgarasındaki kartlar — son kullanılanlarla aynı kompakt boyut */
-  .card {
-    background: #fff; border: 1.5px solid #e0e0e0; border-radius: 5px;
-    padding: 4px; cursor: pointer; text-align: center;
-    transition: all 0.15s ease;
     position: relative;
-    box-shadow: 0 1px 1px rgba(0,0,0,0.03);
   }
-  .card:hover {
+  .recent-card { flex: 0 0 86px; }
+  .recent-card:hover, .card:hover {
     border-color: #f5a623;
     box-shadow: 0 2px 6px rgba(245,166,35,0.18);
     transform: translateY(-1px);
   }
-  .card.active {
+  .recent-card.active, .card.active {
     border-color: #f5a623;
     background: linear-gradient(135deg, #fffaf0, #fff5e1);
     box-shadow: 0 2px 8px rgba(245,166,35,0.25);
   }
-  .card svg { width: 100%; height: 32px; display: block; }
-  .card .code { font-weight: 600; margin-top: 2px; font-size: 10px; }
+  .recent-card svg, .card svg { width: 100%; height: 32px; display: block; }
+  .recent-card .code, .card .code { font-size: 10px; font-weight: 600; margin-top: 2px; }
   .card .dim { color: #888; font-size: 9px; }
   .card.custom { border-style: dashed; }
   .card .badge {
@@ -142,13 +137,45 @@
   }
   .card .delx:hover { background: #f5b3ad; }
 
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+    gap: 5px;
+    margin-bottom: 6px;
+  }
+
+  .form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px;
+    margin-top: 6px;
+  }
+  .form-grid label { font-size: 10.5px; color: #444; }
+  .form-grid input, .form-grid select {
+    width: 100%; padding: 3px 5px;
+    border: 1px solid #bbb; border-radius: 3px; font-size: 11px;
+  }
+  .form-row-full { grid-column: 1 / -1; }
+  .form-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .form-status { margin-top: 4px; padding: 3px 7px; border-radius: 3px; font-size: 10.5px; display: none; }
+  .form-status.ok  { background: #e8f5e8; border: 1px solid #a8d8a8; color: #1f5c1f; display:block; }
+  .form-status.err { background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15; display:block; }
+  .custom-list {
+    margin-top: 6px; padding: 5px 7px; background: #f5f5f5;
+    border-radius: 3px; font-size: 10.5px; color: #555;
+  }
+  .custom-list .storage-path {
+    margin-top: 3px; font-size: 9.5px; color: #888; word-break: break-all;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+
   .actions {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    border-top: 1px solid #ddd; padding-top: 10px;
+    flex: 0 0 auto;
+    display: flex; gap: 5px; flex-wrap: wrap;
+    border-top: 1px solid #ddd; padding: 8px 12px;
+    background: #fafafa;
   }
   button {
-    flex: 1; min-width: 80px;
-    padding: 8px 10px; font-size: 12px;
+    flex: 1; min-width: 78px;
+    padding: 7px 8px; font-size: 11.5px;
     background: linear-gradient(180deg, #f8b53a, #f5a623);
     color: #fff; border: none; border-radius: 5px;
     cursor: pointer; font-weight: 600;
@@ -166,128 +193,117 @@
   button.tertiary { background: linear-gradient(180deg, #9a9a9a, #888); }
   button.tertiary:hover { background: linear-gradient(180deg, #888, #666); }
 
-  details.section {
-    background: #fff; border: 1px solid #ddd; border-radius: 6px;
-    padding: 6px 10px; margin-bottom: 10px;
-  }
-  details.section summary {
-    font-weight: 600; font-size: 12px; cursor: pointer;
-    color: #555;
-  }
-  details[open].section { padding-bottom: 10px; }
-
-  .form-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px;
-    margin-top: 8px;
-  }
-  .form-grid label { font-size: 11px; color: #444; }
-  .form-grid input, .form-grid select {
-    width: 100%; padding: 4px 6px;
-    border: 1px solid #bbb; border-radius: 3px; font-size: 12px;
-  }
-  .form-row-full { grid-column: 1 / -1; }
-  .form-actions { display: flex; gap: 6px; margin-top: 8px; }
-  .form-actions button { flex: 0 0 auto; min-width: 80px; padding: 6px 10px; }
-  .params-help {
-    font-size: 10px; color: #888; margin-top: 4px;
-  }
-  .form-status {
-    margin-top: 6px; padding: 4px 8px; border-radius: 3px; font-size: 11px;
-    display: none;
-  }
-  .form-status.ok   { background: #e8f5e8; border: 1px solid #a8d8a8; color: #1f5c1f; display:block; }
-  .form-status.err  { background: #fdecea; border: 1px solid #f5b3ad; color: #7a1f15; display:block; }
-  .custom-list {
-    margin-top: 8px; padding: 6px 8px; background: #f0f0f0;
-    border-radius: 3px; font-size: 11px; color: #555;
-  }
-  .custom-list .storage-path {
-    margin-top: 4px; font-size: 10px; color: #888; word-break: break-all;
-    font-family: ui-monospace, Menlo, monospace;
+  .sk-info {
+    background: #fff5e1; border: 1px solid #f5d76e;
+    padding: 5px 7px; border-radius: 4px;
+    font-size: 10.5px; color: #6a4f00; margin-bottom: 6px;
   }
 </style>
 </head>
 <body>
 
-<h2>CA-Wall Panel</h2>
-<div class="sub">ca//works · Profil seç → yükseklik gir → çizgi seç ya da Çiz</div>
+<div class="top">
+  <h2>CA-Wall Panel</h2>
+  <div class="sub">Profil/süpürgelik seç → ölçü gir → çizgi seç ya da Çiz</div>
 
-<div class="edit-banner" id="editBanner">
-  <strong>Düzenleme modu:</strong> <span id="editName"></span>
-  <button onclick="cancelEdit()">İptal</button>
-</div>
+  <div class="edit-banner" id="editBanner">
+    <strong>Düzenleme:</strong> <span id="editName"></span>
+    <button onclick="cancelEdit()">İptal</button>
+  </div>
 
-<div class="hint">
-  <strong>Kullanım:</strong> Profil ve panel yüksekliğini girin.
-  <em>Uygula</em>: SketchUp'ta seçili çizgi/yay/curve'e uygular.
-  <em>Çiz</em>: ekrandan tıklayarak yol çizip uygular.
-  <em>Düzenle</em>: seçili Lambri Hattı'nı bu ayarlarla yeniden üretir.
-</div>
+  <div class="controls-row" id="lambriCtrls">
+    <label for="height">Yükseklik:</label>
+    <input type="number" id="height" min="50" max="20000" step="10" value="2800" oninput="validateHeight()">
+    <span class="sub" style="margin:0;">mm</span>
+    <label for="room">Mekan:</label>
+    <input type="text" id="room" placeholder="örn. Salon">
+    <div class="info" id="profileLenInfo">Standart boy: —</div>
+  </div>
 
-<div class="height-row">
-  <label for="height">Yükseklik:</label>
-  <input type="number" id="height" min="50" max="20000" step="10" value="2800" oninput="validateHeight()">
-  <span class="unit">mm</span>
-  <div class="profile-len-info" id="profileLenInfo">Standart boy: —</div>
+  <div class="controls-row" id="skirtingCtrls" style="display:none;">
+    <label for="room2">Mekan:</label>
+    <input type="text" id="room2" placeholder="örn. Salon">
+    <div class="info" id="skirtingLenInfo">Standart boy: —</div>
+  </div>
+
   <div class="warn" id="heightWarn" style="display:none;"></div>
+
+  <div class="checkbox-row" id="flipRow">
+    <input type="checkbox" id="flip">
+    <label for="flip">Profili ters çevir (iç/dış yön)</label>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-tab="lambri" onclick="setTab('lambri')">🪟 Lambri</div>
+    <div class="tab" data-tab="skirting" onclick="setTab('skirting')">▭ Süpürgelik</div>
+    <div class="tab" data-tab="custom"   onclick="setTab('custom')">+ Özel Profil</div>
+  </div>
 </div>
 
-<div class="checkbox-row">
-  <input type="checkbox" id="flip"> <label for="flip">Profili ters çevir (iç/dış yön)</label>
+<div class="tab-body">
+
+  <div class="tab-pane active" id="pane-lambri">
+    <div class="recents-row" id="recentsRow" style="display:none;">
+      <div class="recents-label">Son Kullanılanlar</div>
+      <div class="recents-strip" id="recentsStrip"></div>
+    </div>
+    <div class="grid" id="profileGrid"></div>
+  </div>
+
+  <div class="tab-pane" id="pane-skirting">
+    <div class="sk-info">
+      Süpürgelik tek parça olarak path boyunca uzatılır (continuous extrusion).
+      Lambri olsun olmasın bağımsız uygulanabilir; rengi/dokusu Renk diyaloğundan atanır.
+    </div>
+    <div class="grid" id="skirtingGrid"></div>
+  </div>
+
+  <div class="tab-pane" id="pane-custom">
+    <div class="form-grid">
+      <label>Kod
+        <input type="text" id="cp_code" value="OZEL-001">
+      </label>
+      <label>Ad
+        <input type="text" id="cp_name" value="Özel Lambri">
+      </label>
+      <label>Genişlik (mm)
+        <input type="number" id="cp_w" value="126" min="1" step="1">
+      </label>
+      <label>Derinlik (mm)
+        <input type="number" id="cp_d" value="18" min="1" step="0.5">
+      </label>
+      <label>Standart Boy (mm)
+        <input type="number" id="cp_l" value="2800" min="100" step="10">
+      </label>
+      <label>Desen
+        <select id="cp_pat" onchange="renderParamFields()">
+          <option value="flat">Düz</option>
+          <option value="v_groove">V-Kanal (tek)</option>
+          <option value="double_groove">Çift V-Kanal</option>
+          <option value="u_groove">U-Kanal</option>
+          <option value="ribbed">Çoklu Yiv</option>
+          <option value="half_round">Yarım Yuvarlak</option>
+          <option value="step">Step (Kademe)</option>
+          <option value="reeded">Reeded</option>
+        </select>
+      </label>
+      <div class="form-row-full" id="paramFields"></div>
+    </div>
+    <div class="form-actions">
+      <button onclick="saveCustomProfile()">Kaydet</button>
+      <button class="tertiary" onclick="resetCustomForm()">Temizle</button>
+    </div>
+    <div class="form-status" id="cpStatus"></div>
+    <div class="custom-list">
+      <em>Mevcut özel profiller:</em> <span id="customListNames">—</span>
+      <div class="storage-path" id="storagePath"></div>
+    </div>
+  </div>
+
 </div>
-
-<div class="recents-row" id="recentsRow" style="display:none;">
-  <div class="recents-label">Son Kullanılanlar:</div>
-  <div class="recents-strip" id="recentsStrip"></div>
-</div>
-
-<div class="grid" id="profileGrid"></div>
-
-<details class="section" id="customSection">
-  <summary>+ Özel Profil Ekle</summary>
-  <div class="form-grid">
-    <label>Kod
-      <input type="text" id="cp_code" value="OZEL-001">
-    </label>
-    <label>Ad
-      <input type="text" id="cp_name" value="Özel Lambri">
-    </label>
-    <label>Genişlik (mm)
-      <input type="number" id="cp_w" value="126" min="1" step="1">
-    </label>
-    <label>Derinlik (mm)
-      <input type="number" id="cp_d" value="18" min="1" step="0.5">
-    </label>
-    <label>Standart Boy (mm)
-      <input type="number" id="cp_l" value="2800" min="100" step="10">
-    </label>
-    <label>Desen
-      <select id="cp_pat" onchange="renderParamFields()">
-        <option value="flat">Düz</option>
-        <option value="v_groove">V-Kanal (tek)</option>
-        <option value="double_groove">Çift V-Kanal</option>
-        <option value="u_groove">U-Kanal</option>
-        <option value="ribbed">Çoklu Yiv</option>
-        <option value="half_round">Yarım Yuvarlak</option>
-        <option value="step">Step (Kademe)</option>
-        <option value="reeded">Reeded</option>
-      </select>
-    </label>
-    <div class="form-row-full" id="paramFields"></div>
-  </div>
-  <div class="form-actions">
-    <button onclick="saveCustomProfile()">Kaydet</button>
-    <button class="tertiary" onclick="resetCustomForm()">Temizle</button>
-  </div>
-  <div class="form-status" id="cpStatus"></div>
-  <div class="custom-list" id="customListInfo">
-    <em>Mevcut özel profiller (depoda):</em> <span id="customListNames">—</span>
-    <div class="storage-path" id="storagePath"></div>
-  </div>
-</details>
 
 <div class="actions">
-  <button id="applyBtn" onclick="applyProfile()">✓ Uygula</button>
+  <button id="applyBtn" onclick="applyAction()">✓ Uygula</button>
   <button class="secondary" onclick="drawWithTool()">✏ Çiz</button>
   <button class="secondary" onclick="editSelected()">⟳ Düzenle</button>
   <button class="tertiary" onclick="openMetraj()">📊 Metraj</button>
@@ -296,11 +312,13 @@
 
 <script>
   let activeCode = null;
+  let activeSkirtingCode = null;
   let profiles = [];
+  let skirtings = [];
   let recentCodes = [];
-  let editing = null;     // { run_token, run_name, profile_code, height_mm, flip }
+  let editing = null;
+  let currentTab = 'lambri';
 
-  // ------------------ INIT ------------------
   window.addEventListener('error', e => {
     try { console.error('CA-Wall dialog JS error:', e.message); } catch(_) {}
   });
@@ -310,10 +328,7 @@
       const arr = JSON.parse(json);
       if (!Array.isArray(arr)) throw new Error('Profil listesi geçersiz');
       profiles = arr;
-    } catch (err) {
-      console.error('loadProfiles parse error:', err);
-      return;
-    }
+    } catch(err) { console.error('loadProfiles parse:', err); return; }
     if (!activeCode || !profiles.find(p => p.code === activeCode)) {
       activeCode = profiles[0] ? profiles[0].code : null;
     }
@@ -324,54 +339,34 @@
     updateCustomList();
   }
 
-  function loadRecents(json) {
+  function loadSkirtings(json) {
     try {
       const arr = JSON.parse(json);
-      recentCodes = Array.isArray(arr) ? arr : [];
-    } catch(e) { recentCodes = []; }
+      if (!Array.isArray(arr)) throw new Error('Süpürgelik listesi geçersiz');
+      skirtings = arr;
+    } catch(e) { skirtings = []; }
+    if (!activeSkirtingCode || !skirtings.find(p => p.code === activeSkirtingCode)) {
+      activeSkirtingCode = skirtings[0] ? skirtings[0].code : null;
+    }
+    renderSkirtingGrid();
+    updateSkirtingLenInfo();
+  }
+
+  function loadRecents(json) {
+    try { const arr = JSON.parse(json); recentCodes = Array.isArray(arr) ? arr : []; }
+    catch(e) { recentCodes = []; }
     renderRecents();
-  }
-
-  function renderRecents() {
-    const row = document.getElementById('recentsRow');
-    const strip = document.getElementById('recentsStrip');
-    if (!row || !strip) return;
-    const items = recentCodes
-      .map(code => profiles.find(p => p.code === code))
-      .filter(Boolean)
-      .slice(0, 6);
-    if (items.length === 0) { row.style.display = 'none'; return; }
-    row.style.display = 'block';
-    strip.innerHTML = '';
-    items.forEach(p => {
-      const c = document.createElement('div');
-      c.className = 'recent-card' + (p.code === activeCode ? ' active' : '');
-      c.onclick = () => selectProfile(p.code);
-      let svg;
-      try { svg = profileSVG(p); } catch(_) { svg = ''; }
-      c.innerHTML = `${svg}<div class="code">${escHtml(p.code)}</div>`;
-      strip.appendChild(c);
-    });
-  }
-
-  function updateCustomList() {
-    const span = document.getElementById('customListNames');
-    if (!span) return;
-    const customs = profiles.filter(p => p.custom);
-    span.textContent = customs.length === 0 ?
-      '(henüz yok)' :
-      customs.map(p => p.code).join(', ');
-  }
-
-  function setStoragePath(path) {
-    const el = document.getElementById('storagePath');
-    if (el) el.textContent = path ? ('Depo: ' + path) : '';
   }
 
   function setDefaultHeight(h) {
     const el = document.getElementById('height');
     if (h && h > 0) el.value = h;
     validateHeight();
+  }
+
+  function setStoragePath(path) {
+    const el = document.getElementById('storagePath');
+    if (el) el.textContent = path ? ('Depo: ' + path) : '';
   }
 
   function setEditMode(json) {
@@ -383,9 +378,10 @@
       renderGrid();
       updateProfileLenInfo();
     }
-    if (editing.height_mm)  document.getElementById('height').value = editing.height_mm;
+    if (editing.height_mm) document.getElementById('height').value = editing.height_mm;
     document.getElementById('flip').checked = !!editing.flip;
     document.getElementById('applyBtn').textContent = '✓ Güncelle';
+    setTab('lambri');
     validateHeight();
   }
 
@@ -393,10 +389,39 @@
     editing = null;
     document.getElementById('editBanner').classList.remove('visible');
     document.getElementById('applyBtn').textContent = '✓ Uygula';
-    sketchup.cancel_edit();
+    if (typeof sketchup !== 'undefined') sketchup.cancel_edit();
   }
 
-  // ------------------ PROFILES GRID ------------------
+  function setTab(name) {
+    currentTab = name;
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === name);
+    });
+    document.querySelectorAll('.tab-pane').forEach(p => {
+      p.classList.toggle('active', p.id === 'pane-' + name);
+    });
+    const lc = document.getElementById('lambriCtrls');
+    const sc = document.getElementById('skirtingCtrls');
+    const fr = document.getElementById('flipRow');
+    if (name === 'skirting') {
+      lc.style.display = 'none';
+      sc.style.display = 'flex';
+      fr.style.display = 'none';
+      document.getElementById('applyBtn').textContent = '✓ Süpürgelik Uygula';
+    } else {
+      lc.style.display = 'flex';
+      sc.style.display = 'none';
+      fr.style.display = 'flex';
+      document.getElementById('applyBtn').textContent = editing ? '✓ Güncelle' : '✓ Uygula';
+    }
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"]/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+  function escAttr(s) { return escHtml(s).replace(/'/g, '&#39;'); }
+
   function renderGrid() {
     const grid = document.getElementById('profileGrid');
     grid.innerHTML = '';
@@ -414,8 +439,7 @@
           `<button class="delx" data-code="${escAttr(p.code)}" title="Sil">×</button>` : '';
         let svg;
         try { svg = profileSVG(p); }
-        catch (svgErr) {
-          console.error('profileSVG error for', p && p.code, svgErr);
+        catch(e) {
           svg = '<svg viewBox="0 0 100 40"><rect x="2" y="2" width="96" height="36" fill="#eee" stroke="#999"/></svg>';
         }
         card.innerHTML = `
@@ -433,177 +457,39 @@
           });
         }
         grid.appendChild(card);
-      } catch (cardErr) {
-        console.error('renderGrid card error:', cardErr);
-      }
+      } catch(e) { console.error('grid card:', e); }
     });
   }
 
-  function escHtml(s) {
-    return String(s).replace(/[&<>"]/g, c =>
-      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  }
-  function escAttr(s) { return escHtml(s).replace(/'/g, '&#39;'); }
-
-  function profileSVG(p) {
-    const W = 100, H = 40;
-    const w = p.width_mm, d = p.depth_mm;
-    let pts;
-    switch(p.pattern) {
-      case 'flat': pts = [[0,0],[w,0],[w,d],[0,d]]; break;
-      case 'v_groove': {
-        const gw = (p.params && p.params.groove_width) || 8;
-        const gd = (p.params && p.params.groove_depth) || 4;
-        const cx = w/2;
-        pts = [[0,0],[w,0],[w,d],[cx+gw/2,d],[cx,d-gd],[cx-gw/2,d],[0,d]];
-        break;
-      }
-      case 'double_groove': {
-        const gw = (p.params && p.params.groove_width) || 6;
-        const gd = (p.params && p.params.groove_depth) || 3.5;
-        const sp = (p.params && p.params.groove_spacing) || 30;
-        const cx = w/2, c1 = cx-sp/2, c2 = cx+sp/2;
-        pts = [[0,0],[w,0],[w,d],
-               [c2+gw/2,d],[c2,d-gd],[c2-gw/2,d],
-               [c1+gw/2,d],[c1,d-gd],[c1-gw/2,d],[0,d]];
-        break;
-      }
-      case 'u_groove': {
-        const gw = (p.params && p.params.groove_width) || 14;
-        const gd = (p.params && p.params.groove_depth) || 5;
-        const cx = w/2;
-        pts = [[0,0],[w,0],[w,d],
-               [cx+gw/2,d],[cx+gw/2,d-gd],[cx-gw/2,d-gd],[cx-gw/2,d],[0,d]];
-        break;
-      }
-      case 'ribbed': {
-        const n  = (p.params && p.params.rib_count) || 8;
-        const rd = (p.params && p.params.rib_depth) || 3;
-        const seg = w/n;
-        pts = [[0,0],[w,0],[w,d]];
-        for (let i = 1; i < n; i++) {
-          const x = w - i*seg;
-          pts.push([x+seg/2, d]); pts.push([x, d-rd]);
-        }
-        pts.push([seg/2, d]); pts.push([0, d]);
-        break;
-      }
-      case 'half_round': {
-        const r = (p.params && p.params.radius) || 6;
-        pts = [[0,0],[w,0],[w,d]];
-        const seg = 12;
-        for (let i = 0; i <= seg; i++) {
-          const t = i/seg, ang = t*Math.PI;
-          pts.push([w/2 + (w/2)*Math.cos(ang), d + r*Math.sin(ang)]);
-        }
-        pts.push([0, d]);
-        break;
-      }
-      case 'step': {
-        const sc = (p.params && p.params.step_count) || 2;
-        const sd = (p.params && p.params.step_depth) || 6;
-        const cx = w/2, total = w*0.5, sw = total/sc;
-        pts = [[0,0],[w,0],[w,d]];
-        for (let i = 0; i < sc; i++) {
-          const xo = cx + total/2 - i*sw;
-          const y = d - i*sd;
-          pts.push([xo, y]); pts.push([xo-sw, y]);
-        }
-        const dy = d - sc*sd;
-        pts.push([cx+total/2 - sc*sw, dy]);
-        pts.push([cx-total/2 + sc*sw, dy]);
-        for (let i = sc; i >= 1; i--) {
-          const xi = cx - total/2 + (i-1)*sw;
-          const y = d - (i-1)*sd;
-          pts.push([xi, y]); pts.push([xi-sw, y]);
-        }
-        pts.push([0, d]);
-        break;
-      }
-      case 'reeded': {
-        const n  = (p.params && p.params.rib_count)  || 14;
-        const rr = (p.params && p.params.rib_radius) || 4;
-        const rw = w/n, ar = Math.min(rw/2, rr);
-        pts = [[0,0],[w,0],[w,d]];
-        for (let i = n-1; i >= 0; i--) {
-          const cx = (i+0.5)*rw;
-          const seg = 6;
-          for (let k = 0; k <= seg; k++) {
-            const t = k/seg, ang = t*Math.PI;
-            pts.push([cx + ar*Math.cos(ang), d + ar*Math.sin(ang)]);
-          }
-        }
-        pts.push([0, d]);
-        break;
-      }
-      case 'triple_groove': {
-        const gw = (p.params && p.params.groove_width)   || 4;
-        const gd = (p.params && p.params.groove_depth)   || 2.5;
-        const sp = (p.params && p.params.groove_spacing) || 14;
-        const cx = w/2;
-        pts = [[0,0],[w,0],[w,d]];
-        [cx+sp, cx, cx-sp].forEach(c => {
-          pts.push([c+gw/2, d]); pts.push([c, d-gd]); pts.push([c-gw/2, d]);
-        });
-        pts.push([0, d]);
-        break;
-      }
-      case 'chamfered_edge': {
-        const c  = (p.params && p.params.chamfer) || 1.5;
-        const gw = (p.params && p.params.groove_width) || 0;
-        const gd = (p.params && p.params.groove_depth) || 0;
-        const cx = w/2;
-        pts = [[0,0],[w,0],[w,d-c],[w-c,d]];
-        if (gw > 0 && gd > 0) {
-          pts.push([cx+gw/2,d]); pts.push([cx,d-gd]); pts.push([cx-gw/2,d]);
-        }
-        pts.push([c,d]); pts.push([0,d-c]);
-        break;
-      }
-      case 'tongue_groove': {
-        const tw = (p.params && p.params.tongue_width)  || 4;
-        const th = (p.params && p.params.tongue_height) || 6;
-        const ty = d/2;
-        const ginset = tw + 0.5;
-        pts = [
-          [0,0],[w,0],
-          [w, ty-th/2],[w+tw, ty-th/2],[w+tw, ty+th/2],[w, ty+th/2],
-          [w, d],[0, d],
-          [0, ty+th/2],[ginset, ty+th/2],[ginset, ty-th/2],[0, ty-th/2]
-        ];
-        break;
-      }
-      default: pts = [[0,0],[w,0],[w,d],[0,d]];
-    }
-    // Genel ölçek: tongue_groove gibi panel dışına çıkan kesitlerde de uyum.
-    const xMin = Math.min(...pts.map(pp => pp[0]));
-    const xMax = Math.max(...pts.map(pp => pp[0]));
-    const yMin = Math.min(...pts.map(pp => pp[1]));
-    const yMax = Math.max(...pts.map(pp => pp[1]));
-    const span_x = Math.max(xMax - xMin, 1);
-    const span_y = Math.max(yMax - yMin, 1);
-    const sxA = (W - 4) / span_x;
-    const syA = Math.min((H - 8) / Math.max(span_y, 8), sxA * 1.5);
-    const margin = 2;
-    const path = pts.map((pt, i) => {
-      const x = margin + (pt[0] - xMin) * sxA;
-      const y = H - margin - (pt[1] - yMin) * syA;
-      return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
-    }).join(' ') + ' Z';
-    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-              <path d="${path}" fill="#d4a373" stroke="#5a3a1a" stroke-width="0.5"/>
-            </svg>`;
+  function renderRecents() {
+    const row = document.getElementById('recentsRow');
+    const strip = document.getElementById('recentsStrip');
+    if (!row || !strip) return;
+    const items = recentCodes
+      .map(code => profiles.find(p => p.code === code))
+      .filter(Boolean)
+      .slice(0, 5);
+    if (items.length === 0) { row.style.display = 'none'; return; }
+    row.style.display = 'block';
+    strip.innerHTML = '';
+    items.forEach(p => {
+      const c = document.createElement('div');
+      c.className = 'recent-card' + (p.code === activeCode ? ' active' : '');
+      c.onclick = () => selectProfile(p.code);
+      let svg; try { svg = profileSVG(p); } catch(_) { svg = ''; }
+      c.innerHTML = `${svg}<div class="code">${escHtml(p.code)}</div>`;
+      strip.appendChild(c);
+    });
   }
 
   function selectProfile(code) {
     activeCode = code;
-    // Yerel recents listesini de güncelle (Ruby tarafı kalıcı saklamayı yapar)
-    recentCodes = [code, ...recentCodes.filter(c => c !== code)].slice(0, 6);
+    recentCodes = [code, ...recentCodes.filter(c => c !== code)].slice(0, 5);
     renderGrid();
     renderRecents();
     updateProfileLenInfo();
     validateHeight();
-    sketchup.set_active_profile(code);
+    if (typeof sketchup !== 'undefined') sketchup.set_active_profile(code);
   }
 
   function activeProfile() { return profiles.find(x => x.code === activeCode); }
@@ -618,46 +504,238 @@
     const p = activeProfile();
     const h = parseFloat(document.getElementById('height').value);
     const warn = document.getElementById('heightWarn');
-    if (p && !isNaN(h) && h > p.length_mm) {
+    if (currentTab === 'lambri' && p && !isNaN(h) && h > p.length_mm) {
       warn.style.display = 'block';
-      warn.textContent = `⚠ Malzeme boyutunu geçtiniz (max ${p.length_mm}mm). Uygula'da onaylamanız istenecek.`;
+      warn.textContent = `⚠ Malzeme boyutunu geçtiniz (max ${p.length_mm}mm).`;
     } else {
       warn.style.display = 'none';
     }
   }
 
-  // ------------------ ACTIONS ------------------
-  function readState() {
-    return {
-      code: activeCode,
-      flip: document.getElementById('flip').checked,
-      h:    parseFloat(document.getElementById('height').value)
-    };
+  function renderSkirtingGrid() {
+    const grid = document.getElementById('skirtingGrid');
+    grid.innerHTML = '';
+    skirtings.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'card' + (p.code === activeSkirtingCode ? ' active' : '');
+      card.onclick = () => selectSkirting(p.code);
+      let svg;
+      try { svg = skirtingSVG(p); }
+      catch(e) { svg = '<svg viewBox="0 0 100 40"><rect x="2" y="2" width="96" height="36" fill="#eee"/></svg>'; }
+      card.innerHTML = `
+        ${svg}
+        <div class="code">${escHtml(p.code)}</div>
+        <div class="dim">${p.height_mm}×${p.depth_mm}mm</div>
+      `;
+      grid.appendChild(card);
+    });
   }
 
-  function applyProfile() {
-    const s = readState();
-    if (!s.code)            { alert('Bir profil seçin.'); return; }
-    if (!s.h || s.h <= 0)   { alert('Geçerli bir yükseklik girin.'); return; }
-    if (editing) {
-      sketchup.update_run(s.code, s.flip, s.h);
+  function selectSkirting(code) {
+    activeSkirtingCode = code;
+    renderSkirtingGrid();
+    updateSkirtingLenInfo();
+  }
+
+  function activeSkirting() { return skirtings.find(x => x.code === activeSkirtingCode); }
+
+  function updateSkirtingLenInfo() {
+    const p = activeSkirting();
+    document.getElementById('skirtingLenInfo').textContent =
+      p ? `Standart boy: ${p.length_mm}mm` : 'Standart boy: —';
+  }
+
+  function profileSVG(p) {
+    const W = 100, H = 40;
+    const w = p.width_mm, d = p.depth_mm;
+    let pts;
+    switch(p.pattern) {
+      case 'flat': pts = [[0,0],[w,0],[w,d],[0,d]]; break;
+      case 'v_groove': {
+        const gw=(p.params&&p.params.groove_width)||8, gd=(p.params&&p.params.groove_depth)||4;
+        const cx=w/2;
+        pts=[[0,0],[w,0],[w,d],[cx+gw/2,d],[cx,d-gd],[cx-gw/2,d],[0,d]]; break;
+      }
+      case 'double_groove': {
+        const gw=(p.params&&p.params.groove_width)||6, gd=(p.params&&p.params.groove_depth)||3.5;
+        const sp=(p.params&&p.params.groove_spacing)||30;
+        const cx=w/2,c1=cx-sp/2,c2=cx+sp/2;
+        pts=[[0,0],[w,0],[w,d],[c2+gw/2,d],[c2,d-gd],[c2-gw/2,d],
+             [c1+gw/2,d],[c1,d-gd],[c1-gw/2,d],[0,d]]; break;
+      }
+      case 'triple_groove': {
+        const gw=(p.params&&p.params.groove_width)||4, gd=(p.params&&p.params.groove_depth)||2.5;
+        const sp=(p.params&&p.params.groove_spacing)||14;
+        const cx=w/2;
+        pts=[[0,0],[w,0],[w,d]];
+        [cx+sp,cx,cx-sp].forEach(c => { pts.push([c+gw/2,d]); pts.push([c,d-gd]); pts.push([c-gw/2,d]); });
+        pts.push([0,d]); break;
+      }
+      case 'u_groove': {
+        const gw=(p.params&&p.params.groove_width)||14, gd=(p.params&&p.params.groove_depth)||5;
+        const cx=w/2;
+        pts=[[0,0],[w,0],[w,d],[cx+gw/2,d],[cx+gw/2,d-gd],[cx-gw/2,d-gd],[cx-gw/2,d],[0,d]]; break;
+      }
+      case 'ribbed': {
+        const n=(p.params&&p.params.rib_count)||8, rd=(p.params&&p.params.rib_depth)||3;
+        const seg=w/n;
+        pts=[[0,0],[w,0],[w,d]];
+        for(let i=1;i<n;i++){const x=w-i*seg; pts.push([x+seg/2,d]); pts.push([x,d-rd]);}
+        pts.push([seg/2,d]); pts.push([0,d]); break;
+      }
+      case 'half_round': {
+        const r=(p.params&&p.params.radius)||6;
+        pts=[[0,0],[w,0],[w,d]];
+        for(let i=1;i<12;i++){const t=i/12, ang=t*Math.PI;
+          pts.push([w/2+(w/2)*Math.cos(ang), d+r*Math.sin(ang)]);}
+        pts.push([0,d]); break;
+      }
+      case 'step': {
+        const sc=(p.params&&p.params.step_count)||2, sd=(p.params&&p.params.step_depth)||6;
+        const cx=w/2,total=w*0.5,sw=total/sc;
+        pts=[[0,0],[w,0],[w,d]];
+        for(let i=0;i<sc;i++){const xo=cx+total/2-i*sw; const y=d-i*sd; pts.push([xo,y]); pts.push([xo-sw,y]);}
+        const dy=d-sc*sd;
+        pts.push([cx+total/2-sc*sw,dy]); pts.push([cx-total/2+sc*sw,dy]);
+        for(let i=sc;i>=1;i--){const xi=cx-total/2+(i-1)*sw; const y=d-(i-1)*sd; pts.push([xi,y]); pts.push([xi-sw,y]);}
+        pts.push([0,d]); break;
+      }
+      case 'reeded': {
+        const n=(p.params&&p.params.rib_count)||14, rr=(p.params&&p.params.rib_radius)||4;
+        const rw=w/n, ar=Math.min(rw/2, rr);
+        pts=[[0,0],[w,0],[w,d]];
+        for(let i=n-1;i>=0;i--){const cx=(i+0.5)*rw;
+          for(let k=0;k<=6;k++){const t=k/6, ang=t*Math.PI;
+            pts.push([cx+ar*Math.cos(ang), d+ar*Math.sin(ang)]);}}
+        pts.push([0,d]); break;
+      }
+      case 'chamfered_edge': {
+        const c=(p.params&&p.params.chamfer)||1.5;
+        const gw=(p.params&&p.params.groove_width)||0;
+        const gd=(p.params&&p.params.groove_depth)||0;
+        const cx=w/2;
+        pts=[[0,0],[w,0],[w,d-c],[w-c,d]];
+        if(gw>0&&gd>0){pts.push([cx+gw/2,d]); pts.push([cx,d-gd]); pts.push([cx-gw/2,d]);}
+        pts.push([c,d]); pts.push([0,d-c]); break;
+      }
+      case 'tongue_groove': {
+        const tw=(p.params&&p.params.tongue_width)||4;
+        const th=(p.params&&p.params.tongue_height)||6;
+        const ty=d/2;
+        const ginset=tw+0.5;
+        pts=[[0,0],[w,0],
+          [w,ty-th/2],[w+tw,ty-th/2],[w+tw,ty+th/2],[w,ty+th/2],
+          [w,d],[0,d],
+          [0,ty+th/2],[ginset,ty+th/2],[ginset,ty-th/2],[0,ty-th/2]]; break;
+      }
+      default: pts=[[0,0],[w,0],[w,d],[0,d]];
+    }
+    return ptsToSvg(pts, W, H);
+  }
+
+  function skirtingSVG(p) {
+    const W = 100, H = 40;
+    const h = p.height_mm, d = p.depth_mm;
+    let pts;
+    switch(p.pattern) {
+      case 'modern':
+      case 'slim':
+        pts = [[0,0],[d,0],[d,h],[0,h]]; break;
+      case 'chamfer': {
+        const c = (p.params && p.params.chamfer) || 8;
+        pts = [[0,0],[d,0],[d,h-c],[0,h]]; break;
+      }
+      case 'round': {
+        const r = (p.params && p.params.radius) || 12;
+        pts = [[0,0],[d,0],[d,h-r]];
+        for(let i=1;i<=12;i++){
+          const t=i/12, ang=t*Math.PI/2;
+          pts.push([(d-r)+r*Math.cos(ang), (h-r)+r*Math.sin(ang)]);
+        }
+        break;
+      }
+      case 'step': {
+        const sc = (p.params && p.params.step_count) || 2;
+        const ss = (p.params && p.params.step_size) || 4;
+        pts = [[0,0],[d,0]];
+        let cy = d, cz = h;
+        for(let i=0;i<sc;i++){
+          pts.push([cy, cz-ss]); pts.push([cy-ss, cz-ss]);
+          cy -= ss;
+        }
+        pts.push([cy, h]); pts.push([0, h]);
+        break;
+      }
+      case 'ogee': {
+        const br = Math.min((p.params && p.params.bead_radius)||8, h*0.3);
+        const fr = Math.min((p.params && p.params.fillet)||5, h*0.2);
+        pts = [[0,0],[d,0],[d, h-br-fr*1.5]];
+        const cy_f=d-fr, cz_f=h-br-fr*0.5;
+        for(let i=1;i<=8;i++){const t=i/8, ang=t*Math.PI/2;
+          pts.push([cy_f+fr*Math.cos(ang+Math.PI/2), cz_f+fr*Math.sin(ang+Math.PI/2)]);}
+        const cy_b=d-fr-br, cz_b=h-br;
+        for(let i=1;i<=8;i++){const t=i/8, ang=t*Math.PI/2;
+          pts.push([cy_b+br*Math.cos(-ang), cz_b+br*Math.sin(ang)]);}
+        pts.push([0, h]); break;
+      }
+      default: pts=[[0,0],[d,0],[d,h],[0,h]];
+    }
+    return ptsToSvg(pts, W, H);
+  }
+
+  function ptsToSvg(pts, W, H) {
+    const xMin = Math.min(...pts.map(p => p[0]));
+    const xMax = Math.max(...pts.map(p => p[0]));
+    const yMin = Math.min(...pts.map(p => p[1]));
+    const yMax = Math.max(...pts.map(p => p[1]));
+    const span_x = Math.max(xMax - xMin, 1);
+    const span_y = Math.max(yMax - yMin, 1);
+    const sxA = (W - 4) / span_x;
+    const syA = Math.min((H - 8) / Math.max(span_y, 4), sxA * 1.5);
+    const margin = 2;
+    const path = pts.map((pt, i) => {
+      const x = margin + (pt[0] - xMin) * sxA;
+      const y = H - margin - (pt[1] - yMin) * syA;
+      return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ') + ' Z';
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+              <path d="${path}" fill="#d4a373" stroke="#5a3a1a" stroke-width="0.5"/>
+            </svg>`;
+  }
+
+  function applyAction() {
+    if (currentTab === 'skirting') {
+      if (!activeSkirtingCode) { alert('Bir süpürgelik profili seçin.'); return; }
+      const room = document.getElementById('room2').value.trim();
+      sketchup.apply_skirting(activeSkirtingCode, room);
     } else {
-      sketchup.apply_profile(s.code, s.flip, s.h);
+      if (!activeCode)      { alert('Bir profil seçin.'); return; }
+      const flip = document.getElementById('flip').checked;
+      const h    = parseFloat(document.getElementById('height').value);
+      const room = document.getElementById('room').value.trim();
+      if (!h || h <= 0) { alert('Geçerli bir yükseklik girin.'); return; }
+      if (editing) sketchup.update_run(activeCode, flip, h, room);
+      else         sketchup.apply_profile(activeCode, flip, h, room);
     }
   }
 
   function drawWithTool() {
-    const s = readState();
-    if (!s.code)          { alert('Bir profil seçin.'); return; }
-    if (!s.h || s.h <= 0) { alert('Geçerli bir yükseklik girin.'); return; }
-    sketchup.draw_with_profile(s.code, s.flip, s.h);
+    if (currentTab === 'skirting') {
+      alert('Çiz aracı şu an yalnızca lambri için. Süpürgelik için çizgiyi seçin ve Uygula\'ya basın.');
+      return;
+    }
+    if (!activeCode) { alert('Bir profil seçin.'); return; }
+    const flip = document.getElementById('flip').checked;
+    const h    = parseFloat(document.getElementById('height').value);
+    const room = document.getElementById('room').value.trim();
+    if (!h || h <= 0) { alert('Geçerli bir yükseklik girin.'); return; }
+    sketchup.draw_with_profile(activeCode, flip, h, room);
   }
 
   function editSelected() { sketchup.edit_selected(); }
   function openColors()   { sketchup.open_colors(); }
   function openMetraj()   { sketchup.open_metraj(); }
 
-  // ------------------ CUSTOM PROFILE FORM ------------------
   function renderParamFields() {
     const pat = document.getElementById('cp_pat').value;
     const div = document.getElementById('paramFields');
@@ -668,30 +746,14 @@
          <input type="number" id="${id}" value="${val}" step="${step||0.5}" style="width:70px;">
        </label>`;
     switch(pat) {
-      case 'v_groove':
-        html = f('cp_p_gw','Yiv Genişliği (mm)',8,0.5)+f('cp_p_gd','Yiv Derinliği (mm)',4,0.5);
-        break;
-      case 'double_groove':
-        html = f('cp_p_gw','Yiv Gen. (mm)',6,0.5)+f('cp_p_gd','Yiv Der. (mm)',3.5,0.5)+
-               f('cp_p_sp','Yiv Aralığı (mm)',30,1);
-        break;
-      case 'u_groove':
-        html = f('cp_p_gw','Yiv Gen. (mm)',14,0.5)+f('cp_p_gd','Yiv Der. (mm)',5,0.5);
-        break;
-      case 'ribbed':
-        html = f('cp_p_n','Yiv Sayısı',8,1)+f('cp_p_rd','Yiv Der. (mm)',3,0.5);
-        break;
-      case 'half_round':
-        html = f('cp_p_r','Yarıçap (mm)',6,0.5);
-        break;
-      case 'step':
-        html = f('cp_p_sc','Kademe Sayısı',2,1)+f('cp_p_sd','Kademe Der. (mm)',6,0.5);
-        break;
-      case 'reeded':
-        html = f('cp_p_n','Yiv Sayısı',14,1)+f('cp_p_rr','Yiv Yarıçap (mm)',4,0.5);
-        break;
-      default:
-        html = '<div class="params-help">Bu desen için ek parametre yok.</div>';
+      case 'v_groove': html=f('cp_p_gw','Yiv Gen.',8,0.5)+f('cp_p_gd','Yiv Der.',4,0.5); break;
+      case 'double_groove': html=f('cp_p_gw','Yiv Gen.',6,0.5)+f('cp_p_gd','Yiv Der.',3.5,0.5)+f('cp_p_sp','Aralık',30,1); break;
+      case 'u_groove': html=f('cp_p_gw','Yiv Gen.',14,0.5)+f('cp_p_gd','Yiv Der.',5,0.5); break;
+      case 'ribbed': html=f('cp_p_n','Yiv Sayısı',8,1)+f('cp_p_rd','Yiv Der.',3,0.5); break;
+      case 'half_round': html=f('cp_p_r','Yarıçap',6,0.5); break;
+      case 'step': html=f('cp_p_sc','Kademe',2,1)+f('cp_p_sd','Kademe Der.',6,0.5); break;
+      case 'reeded': html=f('cp_p_n','Yiv Sayısı',14,1)+f('cp_p_rr','Yarıçap',4,0.5); break;
+      default: html='<div style="font-size:10.5px;color:#888;">Bu desen için ek parametre yok.</div>';
     }
     div.innerHTML = html;
   }
@@ -701,88 +763,58 @@
     const params = {};
     const num = id => parseFloat(document.getElementById(id) ? document.getElementById(id).value : 0);
     switch(pat) {
-      case 'v_groove':
-        params.groove_width = num('cp_p_gw'); params.groove_depth = num('cp_p_gd'); break;
-      case 'double_groove':
-        params.groove_width = num('cp_p_gw'); params.groove_depth = num('cp_p_gd');
-        params.groove_spacing = num('cp_p_sp'); break;
-      case 'u_groove':
-        params.groove_width = num('cp_p_gw'); params.groove_depth = num('cp_p_gd'); break;
-      case 'ribbed':
-        params.rib_count = num('cp_p_n'); params.rib_depth = num('cp_p_rd'); break;
-      case 'half_round':
-        params.radius = num('cp_p_r'); break;
-      case 'step':
-        params.step_count = num('cp_p_sc'); params.step_depth = num('cp_p_sd'); break;
-      case 'reeded':
-        params.rib_count = num('cp_p_n'); params.rib_radius = num('cp_p_rr'); break;
+      case 'v_groove': params.groove_width=num('cp_p_gw'); params.groove_depth=num('cp_p_gd'); break;
+      case 'double_groove': params.groove_width=num('cp_p_gw'); params.groove_depth=num('cp_p_gd'); params.groove_spacing=num('cp_p_sp'); break;
+      case 'u_groove': params.groove_width=num('cp_p_gw'); params.groove_depth=num('cp_p_gd'); break;
+      case 'ribbed': params.rib_count=num('cp_p_n'); params.rib_depth=num('cp_p_rd'); break;
+      case 'half_round': params.radius=num('cp_p_r'); break;
+      case 'step': params.step_count=num('cp_p_sc'); params.step_depth=num('cp_p_sd'); break;
+      case 'reeded': params.rib_count=num('cp_p_n'); params.rib_radius=num('cp_p_rr'); break;
     }
     return {
-      code:      document.getElementById('cp_code').value.trim(),
-      name:      document.getElementById('cp_name').value.trim(),
-      width_mm:  parseFloat(document.getElementById('cp_w').value),
-      depth_mm:  parseFloat(document.getElementById('cp_d').value),
+      code: document.getElementById('cp_code').value.trim(),
+      name: document.getElementById('cp_name').value.trim(),
+      width_mm: parseFloat(document.getElementById('cp_w').value),
+      depth_mm: parseFloat(document.getElementById('cp_d').value),
       length_mm: parseFloat(document.getElementById('cp_l').value),
-      pattern:   pat,
-      params:    params
+      pattern: pat,
+      params: params
     };
   }
 
   function saveCustomProfile() {
     const data = readCustomForm();
     const el = document.getElementById('cpStatus');
-
-    if (!data.code) {
-      el.className = 'form-status err';
-      el.textContent = 'Profil kodu boş olamaz.';
-      return;
+    if (!data.code) { el.className='form-status err'; el.textContent='Profil kodu boş olamaz.'; return; }
+    if (!data.name) { el.className='form-status err'; el.textContent='Profil adı boş olamaz.'; return; }
+    if (!(data.width_mm>0 && data.depth_mm>0 && data.length_mm>0)) {
+      el.className='form-status err'; el.textContent='Boyutlar 0\'dan büyük olmalı.'; return;
     }
-    if (!data.name) {
-      el.className = 'form-status err';
-      el.textContent = 'Profil adı boş olamaz.';
-      return;
-    }
-    if (!(data.width_mm > 0 && data.depth_mm > 0 && data.length_mm > 0)) {
-      el.className = 'form-status err';
-      el.textContent = 'Genişlik, derinlik ve standart boy 0\'dan büyük olmalı.';
-      return;
-    }
-
-    el.className = 'form-status';
-    el.textContent = '';
+    el.className='form-status'; el.textContent='';
     sketchup.save_custom_profile(JSON.stringify(data));
   }
 
   function customSaveResult(json) {
     let r;
     try { r = JSON.parse(json); }
-    catch (e) {
-      console.error('customSaveResult parse:', e);
-      r = { ok: false, message: 'İç hata (JSON parse)' };
-    }
+    catch(e) { r = { ok:false, message:'JSON parse hatası' }; }
     const el = document.getElementById('cpStatus');
     el.className = 'form-status ' + (r.ok ? 'ok' : 'err');
     el.textContent = r.message || (r.ok ? 'Kaydedildi.' : 'Hata.');
-    if (r.ok) {
+    if (r.ok && r.profile_code) {
       resetCustomForm();
-      if (r.profile_code) {
-        activeCode = r.profile_code;
-        renderGrid();
-        updateProfileLenInfo();
-        validateHeight();
-      }
+      activeCode = r.profile_code;
+      renderGrid();
+      updateProfileLenInfo();
+      validateHeight();
     }
   }
 
   function resetCustomForm() {
-    // Bir sonraki için akıllı varsayılan kod
     const customs = profiles.filter(p => p.custom);
     let n = customs.length + 1;
     let next = 'OZEL-' + String(n).padStart(3, '0');
-    while (profiles.find(p => p.code === next)) {
-      n += 1;
-      next = 'OZEL-' + String(n).padStart(3, '0');
-    }
+    while (profiles.find(p => p.code === next)) { n += 1; next = 'OZEL-' + String(n).padStart(3, '0'); }
     document.getElementById('cp_code').value = next;
     document.getElementById('cp_name').value = 'Özel Lambri';
     document.getElementById('cp_w').value = 126;
@@ -798,7 +830,13 @@
     sketchup.delete_custom_profile(code);
   }
 
-  // ------------------ BOOT ------------------
+  function updateCustomList() {
+    const span = document.getElementById('customListNames');
+    if (!span) return;
+    const customs = profiles.filter(p => p.custom);
+    span.textContent = customs.length === 0 ? '(henüz yok)' : customs.map(p => p.code).join(', ');
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     renderParamFields();
     if (typeof sketchup !== 'undefined') sketchup.dialog_ready();

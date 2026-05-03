@@ -34,8 +34,13 @@ module CAWorks
       #  GİRİŞ NOKTALARI
       # ============================================================
 
+      @last_room_name = nil
+      class << self
+        attr_accessor :last_room_name
+      end
+
       # Seçimden uygula (mevcut ana akış)
-      def self.run(height_mm = nil)
+      def self.run(height_mm = nil, room_name = nil)
         @editing_run = nil
         @last_status = nil
 
@@ -69,11 +74,12 @@ module CAWorks
         path_pts = polyline_points_from_edges(ordered)
         return if path_pts.size < 2
 
-        execute_build(model, parent_entities, path_pts, profile, @last_height_mm, @flip_orientation)
+        @last_room_name = room_name if room_name && !room_name.to_s.strip.empty?
+        execute_build(model, parent_entities, path_pts, profile, @last_height_mm, @flip_orientation, @last_room_name)
       end
 
       # Verilen edge listesinden uygula (DrawTool tarafından çağrılır)
-      def self.run_from_edges(edges, height_mm, flip)
+      def self.run_from_edges(edges, height_mm, flip, room_name = nil)
         @editing_run = nil
         return if edges.nil? || edges.empty?
 
@@ -89,14 +95,18 @@ module CAWorks
         path_pts = polyline_points_from_edges(ordered)
         return if path_pts.size < 2
 
+        @last_room_name = room_name if room_name && !room_name.to_s.strip.empty?
         model = Sketchup.active_model
-        execute_build(model, parent_entities, path_pts, profile, @last_height_mm, @flip_orientation)
+        execute_build(model, parent_entities, path_pts, profile, @last_height_mm, @flip_orientation, @last_room_name)
       end
 
       # Mevcut bir Lambri Hattı'nı düzenle: aynı path üzerinde yeni
       # profil/yükseklik/flip ile yeniden üret
-      def self.regenerate_run(run_group, profile, height_mm, flip)
+      def self.regenerate_run(run_group, profile, height_mm, flip, room_name = nil)
         return unless panel_run?(run_group)
+        # Var olan room_name'i koru, yeni gönderilirse onu kullan
+        existing_room = run_group.get_attribute(ATTR_DICT, 'room_name')
+        room_name ||= existing_room
 
         pts_arr = run_group.get_attribute(ATTR_DICT, 'path_points')
         unless pts_arr.is_a?(Array) && pts_arr.size >= 6
@@ -129,7 +139,7 @@ module CAWorks
           run_group.entities.clear!
           assign_lambri_layer(model, run_group)
           apply_default_material(model, run_group) unless run_group.material
-          fill_run_group(run_group, path_pts, profile, height_mm.to_f, !!flip)
+          fill_run_group(run_group, path_pts, profile, height_mm.to_f, !!flip, room_name)
           model.commit_operation
           model.selection.clear
           model.selection.add(run_group)
@@ -173,14 +183,14 @@ module CAWorks
         true
       end
 
-      def self.execute_build(model, parent_entities, path_pts, profile, height_mm, flip)
+      def self.execute_build(model, parent_entities, path_pts, profile, height_mm, flip, room_name = nil)
         model.start_operation('CA-Wall Panel Uygula', true)
         begin
           run_group = parent_entities.add_group
           run_group.name = "Lambri Hattı · #{profile[:code]} · h#{height_mm.round}mm"
           assign_lambri_layer(model, run_group)
           apply_default_material(model, run_group)
-          fill_run_group(run_group, path_pts, profile, height_mm, flip)
+          fill_run_group(run_group, path_pts, profile, height_mm, flip, room_name)
 
           if run_group.entities.length == 0
             run_group.erase! if run_group.valid?
@@ -215,68 +225,127 @@ module CAWorks
         group.material = mat
       end
 
-      def self.fill_run_group(run_group, path_pts, profile, height_mm, flip)
+      def self.fill_run_group(run_group, path_pts, profile, height_mm, flip, room_name = nil)
         segments = segments_from_polyline(path_pts)
         return if segments.empty?
 
         panel_w_inch = profile[:width_mm].mm
         total_len    = segments.sum { |s| s[:length] }
 
-        if total_len < panel_w_inch
+        if total_len < panel_w_inch * 0.05
           UI.messagebox(
-            "Çizgi en az bir panel boyu (#{profile[:width_mm]}mm) olmalı.\n" \
-            "Seçili path uzunluğu: #{(total_len / 1.mm).round} mm"
+            "Çizgi çok kısa (#{(total_len / 1.mm).round} mm).\n" \
+            "Lütfen daha uzun bir çizgi seçin."
           )
           return
         end
 
         chord_pts = walk_chord_points(segments, panel_w_inch)
-        return if chord_pts.size < 2
+        # En az 1 chord point garantili (path başlangıcı). 2'den az ise
+        # tek bir parçalı panel ile devam et.
 
         defn = Components.get_or_create(profile, height_mm)
         z_up = Geom::Vector3d.new(0, 0, 1)
 
-        placed = 0
-        (0...(chord_pts.size - 1)).each do |i|
-          p_a = chord_pts[i]
-          p_b = chord_pts[i + 1]
+        placed_full    = 0
+        placed_partial = 0
+        if chord_pts.size >= 2
+          (0...(chord_pts.size - 1)).each do |i|
+            p_a = chord_pts[i]
+            p_b = chord_pts[i + 1]
 
-          x_axis = p_b - p_a
-          next if x_axis.length < 1.0e-9
-          x_axis.normalize!
+            x_axis = p_b - p_a
+            next if x_axis.length < 1.0e-9
+            x_axis.normalize!
 
-          y_axis = z_up * x_axis
-          if y_axis.length < 1.0e-9
-            y_axis = Geom::Vector3d.new(0, 1, 0)
-          else
-            y_axis.normalize!
+            y_axis = z_up * x_axis
+            if y_axis.length < 1.0e-9
+              y_axis = Geom::Vector3d.new(0, 1, 0)
+            else
+              y_axis.normalize!
+            end
+            y_axis.reverse! if flip
+
+            tr = Geom::Transformation.axes(p_a, x_axis, y_axis, z_up)
+            inst = run_group.entities.add_instance(defn, tr)
+            inst.name = "Panel #{placed_full + 1}"
+            placed_full += 1
           end
-          y_axis.reverse! if flip
-
-          # z-axis daima global yukarı — panel her zaman yukarı extrude.
-          # flip durumunda x,y left-handed olur; SU bunu yansıma olarak işler,
-          # ki bu da "panelin path'in diğer tarafına yerleştirilmesi" demek.
-          tr = Geom::Transformation.axes(p_a, x_axis, y_axis, z_up)
-          inst = run_group.entities.add_instance(defn, tr)
-          inst.name = "Panel #{placed + 1}"
-          placed += 1
         end
 
-        return if placed.zero?
+        # Kalan partial parça (kesilmiş son lambri)
+        last_anchor = chord_pts.last || segments.first[:a]
+        end_pt      = segments.last[:b]
+        leftover    = (end_pt - last_anchor).length
+        if leftover > 1.0e-3 && leftover < panel_w_inch
+          place_partial_panel(run_group, last_anchor, end_pt, profile, height_mm, flip)
+          placed_partial = 1
+        end
+
+        total_placed = placed_full + placed_partial
+        return if total_placed.zero?
 
         path_array = path_pts.flat_map { |p| [p.x.to_f, p.y.to_f, p.z.to_f] }
         run_group.set_attribute(ATTR_DICT, 'is_panel_run', true)
         run_group.set_attribute(ATTR_DICT, 'profile_code', profile[:code])
         run_group.set_attribute(ATTR_DICT, 'profile_name', profile[:name])
-        run_group.set_attribute(ATTR_DICT, 'height_mm',    height_mm.to_f)
-        run_group.set_attribute(ATTR_DICT, 'flip',         !!flip)
-        run_group.set_attribute(ATTR_DICT, 'panel_count',  placed)
-        run_group.set_attribute(ATTR_DICT, 'width_mm',     profile[:width_mm].to_f)
-        run_group.set_attribute(ATTR_DICT, 'depth_mm',     profile[:depth_mm].to_f)
-        run_group.set_attribute(ATTR_DICT, 'length_mm',    profile[:length_mm].to_f)
-        run_group.set_attribute(ATTR_DICT, 'path_points',  path_array)
-        run_group.name = "Lambri Hattı · #{profile[:code]} · #{placed}× h#{height_mm.round}mm"
-        @last_status = "#{placed} panel yerleştirildi (#{profile[:code]})"
+        run_group.set_attribute(ATTR_DICT, 'height_mm',     height_mm.to_f)
+        run_group.set_attribute(ATTR_DICT, 'flip',          !!flip)
+        run_group.set_attribute(ATTR_DICT, 'panel_count',   total_placed)
+        run_group.set_attribute(ATTR_DICT, 'panel_full',    placed_full)
+        run_group.set_attribute(ATTR_DICT, 'panel_partial', placed_partial)
+        run_group.set_attribute(ATTR_DICT, 'partial_mm',    placed_partial.zero? ? 0.0 : (leftover / 1.mm))
+        run_group.set_attribute(ATTR_DICT, 'width_mm',      profile[:width_mm].to_f)
+        run_group.set_attribute(ATTR_DICT, 'depth_mm',      profile[:depth_mm].to_f)
+        run_group.set_attribute(ATTR_DICT, 'length_mm',     profile[:length_mm].to_f)
+        run_group.set_attribute(ATTR_DICT, 'path_points',   path_array)
+        if room_name && !room_name.to_s.strip.empty?
+          run_group.set_attribute(ATTR_DICT, 'room_name', room_name.to_s.strip)
+        end
+        suffix = placed_partial.zero? ? "#{placed_full}× h#{height_mm.round}mm" :
+                                        "#{placed_full}+½× h#{height_mm.round}mm"
+        rn     = run_group.get_attribute(ATTR_DICT, 'room_name').to_s
+        rn_str = rn.empty? ? '' : " · #{rn}"
+        run_group.name = "Lambri Hattı · #{profile[:code]}#{rn_str} · #{suffix}"
+        @last_status = "#{total_placed} panel yerleştirildi (#{profile[:code]})"
+      end
+
+      # Son lambri tam yetmediğinde, kalan yere kesilmiş düz dikdörtgen
+      # bir parça yerleştirilir (Group, ayrıca ComponentDefinition oluşturmaz).
+      def self.place_partial_panel(run_group, p_a, p_b, profile, height_mm, flip)
+        partial_w_inch = (p_b - p_a).length
+        return if partial_w_inch < 1.0e-3
+        partial_d_inch = profile[:depth_mm].mm
+        height_inch    = height_mm.mm
+
+        x_axis = p_b - p_a
+        x_axis.normalize!
+        z_up = Geom::Vector3d.new(0, 0, 1)
+        y_axis = z_up * x_axis
+        if y_axis.length < 1.0e-9
+          y_axis = Geom::Vector3d.new(0, 1, 0)
+        else
+          y_axis.normalize!
+        end
+        y_axis.reverse! if flip
+
+        dy = y_axis.clone; dy.length = partial_d_inch
+        dx = x_axis.clone; dx.length = partial_w_inch
+
+        bl = p_a
+        br = p_a.offset(dx)
+        fr = br.offset(dy)
+        fl = bl.offset(dy)
+
+        partial_group = run_group.entities.add_group
+        face = partial_group.entities.add_face([bl, br, fr, fl])
+        return unless face
+        face.reverse! if face.normal.dot(z_up) < 0
+        face.pushpull(height_inch)
+        partial_group.name = "Panel (kesilmiş #{(partial_w_inch / 1.mm).round}mm)"
+        partial_group.set_attribute(ATTR_DICT, 'is_partial_panel', true)
+        partial_group.set_attribute(ATTR_DICT, 'partial_width_mm', (partial_w_inch / 1.mm))
+        partial_group
       end
 
       def self.panel_run?(group)

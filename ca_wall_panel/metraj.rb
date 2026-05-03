@@ -43,9 +43,13 @@ module CAWorks
             height_mm:    e.get_attribute(ATTR_DICT, 'height_mm').to_f,
             flip:         e.get_attribute(ATTR_DICT, 'flip') == true,
             panel_count:  e.get_attribute(ATTR_DICT, 'panel_count').to_i,
+            panel_full:   e.get_attribute(ATTR_DICT, 'panel_full').to_i,
+            panel_partial:e.get_attribute(ATTR_DICT, 'panel_partial').to_i,
+            partial_mm:   e.get_attribute(ATTR_DICT, 'partial_mm').to_f,
             width_mm:     e.get_attribute(ATTR_DICT, 'width_mm').to_f,
             depth_mm:     e.get_attribute(ATTR_DICT, 'depth_mm').to_f,
             length_mm:    e.get_attribute(ATTR_DICT, 'length_mm').to_f,
+            room_name:    e.get_attribute(ATTR_DICT, 'room_name').to_s,
             material_name: mat_name.to_s,
             material_rgb:  mat_rgb,
             texture_path:  e.get_attribute(ATTR_DICT, 'texture_path').to_s
@@ -71,7 +75,8 @@ module CAWorks
 
         runs.each do |r|
           color_key = r[:material_rgb].is_a?(Array) ? r[:material_rgb].join(',') : 'default'
-          key = [r[:profile_code], r[:height_mm].round(3), color_key]
+          room      = r[:room_name].to_s
+          key = [r[:profile_code], r[:height_mm].round(3), color_key, room]
           g = (groups[key] ||= {
             profile_code:   r[:profile_code],
             profile_name:   r[:profile_name],
@@ -79,19 +84,63 @@ module CAWorks
             width_mm:       r[:width_mm],
             depth_mm:       r[:depth_mm],
             length_mm:      r[:length_mm],
+            room_name:      room,
             material_name:  r[:material_name],
             material_rgb:   r[:material_rgb],
             texture_path:   r[:texture_path],
             panel_count:    0,
+            panel_full:     0,
+            panel_partial:  0,
             run_count:      0,
             run_names:      []
           })
-          g[:panel_count] += r[:panel_count]
-          g[:run_count]   += 1
-          g[:run_names]   << r[:name]
+          g[:panel_count]   += r[:panel_count]
+          g[:panel_full]    += r[:panel_full]
+          g[:panel_partial] += r[:panel_partial]
+          g[:run_count]     += 1
+          g[:run_names]     << r[:name]
         end
 
         groups.values.map { |g| g.merge(calc_quantities(g)) }
+      end
+
+      # ------------------------------------------------------------
+      #  SÜPÜRGELİK ÖZETİ (skirting summary)
+      # ------------------------------------------------------------
+      def self.skirting_summary
+        rows = Skirting.collect_all
+        groups = {}
+        rows.each do |r|
+          color_key = r[:material_rgb].is_a?(Array) ? r[:material_rgb].join(',') : 'default'
+          room = r[:room_name].to_s
+          key = [r[:skirting_code], color_key, room]
+          g = (groups[key] ||= {
+            skirting_code: r[:skirting_code],
+            skirting_name: r[:skirting_name],
+            height_mm:     r[:height_mm],
+            depth_mm:      r[:depth_mm],
+            length_mm:     r[:length_mm],
+            room_name:     room,
+            material_name: r[:material_name],
+            material_rgb:  r[:material_rgb],
+            total_length_mm: 0.0,
+            run_count:     0
+          })
+          g[:total_length_mm] += r[:total_length_mm]
+          g[:run_count]       += 1
+        end
+
+        groups.values.map do |g|
+          total_m = g[:total_length_mm] / 1000.0
+          area_m2 = total_m * (g[:height_mm] / 1000.0)
+          stock_mm = g[:length_mm].to_f
+          pieces = stock_mm > 0 ? (g[:total_length_mm] / stock_mm).ceil : 0
+          waste_m = pieces > 0 ? ((pieces * stock_mm - g[:total_length_mm]) / 1000.0).round(3) : 0.0
+          g.merge(total_m: total_m.round(3),
+                  area_m2: area_m2.round(3),
+                  pieces_needed: pieces,
+                  waste_m: waste_m)
+        end
       end
 
       # waste = pieces_needed * standard_length - panel_count * height
@@ -270,14 +319,18 @@ module CAWorks
                       'İsimsiz Model' : Sketchup.active_model.title)
 
         rows_html = if rows.empty?
-          '<tr><td colspan="11" class="empty">Modelde Lambri Hattı bulunamadı.</td></tr>'
+          '<tr><td colspan="12" class="empty">Modelde Lambri Hattı bulunamadı.</td></tr>'
         else
-          rows.sort_by { |r| [r[:profile_code], r[:height_mm], r[:material_name]] }.map do |r|
+          rows.sort_by { |r| [r[:room_name].to_s, r[:profile_code], r[:height_mm], r[:material_name]] }.map do |r|
             rgb = r[:material_rgb].is_a?(Array) ? r[:material_rgb] : [200, 200, 200]
             tex = r[:texture_path].to_s.empty? ? '' :
                   ' <span class="tex" title="Doku: ' + e(r[:texture_path]) + '">🖼</span>'
+            partial_str = (r[:panel_partial].to_i > 0) ?
+                          "<span class='partial' title='Kesilmiş son lambri: #{r[:partial_mm].round}mm'>+½ (#{r[:partial_mm].round}mm)</span>" : ''
+            full_str = r[:panel_full].to_i > 0 ? r[:panel_full].to_s : r[:panel_count].to_s
             <<~ROW
               <tr>
+                <td>#{e(r[:room_name].to_s.empty? ? '—' : r[:room_name])}</td>
                 <td>#{e(r[:profile_code])}</td>
                 <td>#{e(r[:profile_name])}</td>
                 <td class="num">#{fmt_dim(r[:width_mm])}×#{fmt_dim(r[:depth_mm])}</td>
@@ -286,7 +339,7 @@ module CAWorks
                   <span class="swatch" style="background:rgb(#{rgb[0]},#{rgb[1]},#{rgb[2]})"></span>
                   #{e(r[:material_name])}#{tex}
                 </td>
-                <td class="num">#{r[:panel_count]}</td>
+                <td class="num">#{full_str} #{partial_str}</td>
                 <td class="num">#{fmt_num(r[:total_front_m], 2)}</td>
                 <td class="num">#{fmt_num(r[:total_area_m2], 2)}</td>
                 <td class="num">#{fmt_int(r[:length_mm])} × #{r[:pieces_needed]}</td>
@@ -294,6 +347,36 @@ module CAWorks
                 <td class="note">#{e(r[:note].to_s)}</td>
               </tr>
             ROW
+          end.join("\n")
+        end
+
+        # ---- Süpürgelik özeti ----
+        skirting_rows = (skirting_summary rescue [])
+        skirt_total_m    = skirting_rows.sum { |r| r[:total_m].to_f }
+        skirt_total_area = skirting_rows.sum { |r| r[:area_m2].to_f }
+        skirt_total_p    = skirting_rows.sum { |r| r[:pieces_needed].to_i }
+        skirt_total_w    = skirting_rows.sum { |r| r[:waste_m].to_f }
+        skirting_html = if skirting_rows.empty?
+          '<tr><td colspan="9" class="empty">Modelde süpürgelik bulunamadı.</td></tr>'
+        else
+          skirting_rows.sort_by { |r| [r[:room_name].to_s, r[:skirting_code]] }.map do |r|
+            rgb = r[:material_rgb].is_a?(Array) ? r[:material_rgb] : [250, 250, 248]
+            <<~SROW
+              <tr>
+                <td>#{e(r[:room_name].to_s.empty? ? '—' : r[:room_name])}</td>
+                <td>#{e(r[:skirting_code])}</td>
+                <td>#{e(r[:skirting_name])}</td>
+                <td class="num">#{fmt_int(r[:height_mm])}×#{fmt_dim(r[:depth_mm])}</td>
+                <td>
+                  <span class="swatch" style="background:rgb(#{rgb[0]},#{rgb[1]},#{rgb[2]})"></span>
+                  #{e(r[:material_name])}
+                </td>
+                <td class="num">#{fmt_num(r[:total_m], 2)}</td>
+                <td class="num">#{fmt_num(r[:area_m2], 2)}</td>
+                <td class="num">#{fmt_int(r[:length_mm])} × #{r[:pieces_needed]}</td>
+                <td class="num">#{fmt_num(r[:waste_m], 2)}</td>
+              </tr>
+            SROW
           end.join("\n")
         end
 
@@ -317,7 +400,10 @@ module CAWorks
             }
             header h1 { margin: 0; font-size: 18px; color: #b56a00; }
             header .meta { font-size: 11px; color: #666; }
-            table { width: 100%; border-collapse: collapse; background: #fff; }
+            h2.section { margin: 18px 0 6px; font-size: 14px; color: #b56a00;
+                        border-bottom: 1px solid #f5d76e; padding-bottom: 4px; }
+            table { width: 100%; border-collapse: collapse; background: #fff;
+                    margin-bottom: 8px; }
             th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left;
                      vertical-align: middle; }
             th { background: #fff5e1; color: #6a4f00; font-weight: 600; font-size: 11px;
@@ -330,6 +416,7 @@ module CAWorks
               display: inline-block; width: 18px; height: 18px; border-radius: 3px;
               border: 1px solid #999; margin-right: 6px; vertical-align: middle;
             }
+            .partial { color: #b56a00; font-weight: 600; font-size: 10px; }
             .tex { color: #b56a00; }
             .controls { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
             button {
@@ -363,9 +450,11 @@ module CAWorks
               <div class="meta">#{date_str}<br>ca//works · Cihan Aydoğdu Mimarlık</div>
             </header>
 
+            <h2 class="section">Lambri Hatları</h2>
             <table>
               <thead>
                 <tr>
+                  <th>Mekan</th>
                   <th>Profil Kodu</th>
                   <th>Ad</th>
                   <th class="num">Kesit (mm)</th>
@@ -384,13 +473,42 @@ module CAWorks
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="5">TOPLAM</td>
+                  <td colspan="6">TOPLAM</td>
                   <td class="num">#{total_panels}</td>
                   <td class="num">#{fmt_num(total_front, 2)}</td>
                   <td class="num">#{fmt_num(total_area, 2)}</td>
                   <td class="num">#{total_pieces}</td>
                   <td class="num">#{fmt_num(total_waste, 2)}</td>
                   <td></td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <h2 class="section">Süpürgelik Hatları</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Mekan</th>
+                  <th>Profil Kodu</th>
+                  <th>Ad</th>
+                  <th class="num">Kesit (mm)</th>
+                  <th>Renk / Materyal</th>
+                  <th class="num">Toplam (m)</th>
+                  <th class="num">Alan (m²)</th>
+                  <th class="num">Standart Parça</th>
+                  <th class="num">Fire (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                #{skirting_html}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="5">TOPLAM</td>
+                  <td class="num">#{fmt_num(skirt_total_m, 2)}</td>
+                  <td class="num">#{fmt_num(skirt_total_area, 2)}</td>
+                  <td class="num">#{skirt_total_p}</td>
+                  <td class="num">#{fmt_num(skirt_total_w, 2)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -402,11 +520,11 @@ module CAWorks
             </div>
 
             <div class="legend">
+              <strong>Mekan:</strong> uygulamada girilen oda/mekan adı (boş ise —).
               <strong>Ön Yüz (m):</strong> panel sayısı × profil genişliği.
               <strong>Alan (m²):</strong> ön yüz × yükseklik.
-              <strong>Standart Parça:</strong> standart boy × gereken parça.
-              <strong>Fire (m):</strong> (parça × stok boyu) − (panel sayısı × yükseklik); aynı stok boy kullanılır.
-              Aynı profil farklı renklerde ayrı satırlarda görünür.
+              <strong>Panel +½:</strong> son lambri tam yetmediğinde kesilmiş (yarım) parça.
+              <strong>Süpürgelik:</strong> path boyunca tek parça (continuous extrusion); toplam uzunluk metrelik.
             </div>
           </body>
           </html>

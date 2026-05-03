@@ -144,11 +144,13 @@ module CAWorks
           if panel_run?(e)
             targets << e
             e.entities.grep(Sketchup::ComponentInstance).each { |i| targets << i }
+          elsif skirting?(e)
+            # Süpürgelik tek parça → doğrudan boyanır
+            targets << e
           elsif e.is_a?(Sketchup::ComponentInstance)
             targets << e
           elsif e.is_a?(Sketchup::Group) &&
                 e.get_attribute(ATTR_DICT, 'profile_code')
-            # legacy v0.2 grupları
             targets << e
           end
         end
@@ -161,12 +163,17 @@ module CAWorks
           e.get_attribute(ATTR_DICT, 'is_panel_run') == true
       end
 
+      def self.skirting?(e)
+        e.is_a?(Sketchup::Group) &&
+          e.get_attribute(ATTR_DICT, 'is_skirting') == true
+      end
+
       def self.paint_targets(targets, mat, name, rgb, texture_path)
         affected = 0
         targets.each do |t|
           t.material = mat
           affected += 1
-          if panel_run?(t)
+          if panel_run?(t) || skirting?(t)
             t.set_attribute(ATTR_DICT, 'material_name', name.to_s)
             t.set_attribute(ATTR_DICT, 'material_rgb',  rgb || mat_rgb(mat))
             t.set_attribute(ATTR_DICT, 'texture_path',  texture_path.to_s)
