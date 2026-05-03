@@ -26,6 +26,8 @@ module CAWorks
 
       DEFAULT_SECTION = 'caworks_ca_wall_panel'.freeze
       CUSTOM_KEY      = 'custom_profiles_v1'.freeze
+      RECENTS_KEY     = 'recent_profile_codes_v1'.freeze
+      RECENTS_LIMIT   = 6
 
       # Birincil depolama: kullanıcı home klasöründe JSON dosyası
       # (Sketchup.write_default'tan daha güvenilir; Türkçe karakter ve
@@ -37,53 +39,160 @@ module CAWorks
         File.join(File.dirname(File.dirname(__FILE__)), '.caworks_custom_profiles.json')
       end
 
+      def self.recents_file
+        File.join(Dir.home, '.caworks_ca_wall_panel_recents.json')
+      rescue StandardError
+        File.join(File.dirname(File.dirname(__FILE__)), '.caworks_recents.json')
+      end
+
+      # ------------------------------------------------------------
+      #  SON KULLANILANLAR (recently used profile codes)
+      # ------------------------------------------------------------
+      def self.recent_codes
+        json = if File.exist?(recents_file)
+                 File.read(recents_file, mode: 'rb:UTF-8') rescue '[]'
+               else
+                 Sketchup.read_default(DEFAULT_SECTION, RECENTS_KEY, '[]')
+               end
+        arr = JSON.parse(json) rescue []
+        arr.is_a?(Array) ? arr.first(RECENTS_LIMIT) : []
+      rescue StandardError
+        []
+      end
+
+      def self.add_recent(code)
+        return unless code.is_a?(String) && !code.empty?
+        list = ([code] + recent_codes.reject { |c| c == code }).first(RECENTS_LIMIT)
+        json = JSON.generate(list)
+        begin
+          File.write(recents_file, json, mode: 'wb:UTF-8')
+        rescue StandardError
+          Sketchup.write_default(DEFAULT_SECTION, RECENTS_KEY, json) rescue nil
+        end
+        list
+      end
+
+      # Yerleşik profil havuzu — kesitler gerçek panel ölçülerine göre
+      # ayarlandı. Her isim genel/teknik tanımdır; üretici markası içermez.
       DATA = [
+        # — Düz (flat) seri ———————————————————————————————————————
         {
-          code: '08126-01', name: 'Düz 8x126', width_mm: 126, depth_mm: 8,
+          code: '08126-01', name: 'Düz 8×126', width_mm: 126, depth_mm: 8,
           length_mm: 2800, pattern: :flat, params: {}
         },
         {
-          code: '18126-46', name: 'V-Kanal 18x126', width_mm: 126, depth_mm: 18,
+          code: '18126-01', name: 'Düz 18×126', width_mm: 126, depth_mm: 18,
+          length_mm: 2800, pattern: :flat, params: {}
+        },
+        {
+          code: '18120-01', name: 'Düz 18×120', width_mm: 120, depth_mm: 18,
+          length_mm: 2800, pattern: :flat, params: {}
+        },
+        {
+          code: '14150-01', name: 'İnce Düz 14×150', width_mm: 150, depth_mm: 14,
+          length_mm: 2800, pattern: :flat, params: {}
+        },
+        {
+          code: '19200-01', name: 'Geniş Düz 19×200', width_mm: 200, depth_mm: 19,
+          length_mm: 2800, pattern: :flat, params: {}
+        },
+        {
+          code: '08215-01', name: 'Geniş Düz 8×215', width_mm: 215, depth_mm: 8,
+          length_mm: 2800, pattern: :flat, params: {}
+        },
+
+        # — Pahlı Düz (chamfered_edge) ——————————————————————————
+        {
+          code: '18126-CH', name: 'Pahlı Düz 18×126', width_mm: 126, depth_mm: 18,
+          length_mm: 2800, pattern: :chamfered_edge,
+          params: { chamfer: 1.5 }
+        },
+        {
+          code: '18120-CH', name: 'Pahlı Düz 18×120', width_mm: 120, depth_mm: 18,
+          length_mm: 2800, pattern: :chamfered_edge,
+          params: { chamfer: 1.5 }
+        },
+
+        # — V-Kanal seri ——————————————————————————————————————————
+        {
+          code: '18126-46', name: 'V-Kanal 18×126', width_mm: 126, depth_mm: 18,
           length_mm: 2800, pattern: :v_groove,
-          params: { groove_count: 1, groove_width: 8.0, groove_depth: 4.0 }
+          params: { groove_count: 1, groove_width: 6.0, groove_depth: 3.0 }
         },
         {
-          code: '18126-44', name: 'Çift V-Kanal 18x126', width_mm: 126, depth_mm: 18,
+          code: '18120-46', name: 'V-Kanal 18×120', width_mm: 120, depth_mm: 18,
+          length_mm: 2800, pattern: :v_groove,
+          params: { groove_count: 1, groove_width: 6.0, groove_depth: 3.0 }
+        },
+        {
+          code: '22150-46', name: 'Derin V 22×150', width_mm: 150, depth_mm: 22,
+          length_mm: 2800, pattern: :v_groove,
+          params: { groove_count: 1, groove_width: 10.0, groove_depth: 6.0 }
+        },
+        {
+          code: '18126-CV', name: 'Pahlı V-Kanal 18×126', width_mm: 126, depth_mm: 18,
+          length_mm: 2800, pattern: :chamfered_edge,
+          params: { chamfer: 1.5, groove_width: 6.0, groove_depth: 3.0 }
+        },
+
+        # — Çift V ————————————————————————————————————————————————
+        {
+          code: '18126-44', name: 'Çift V-Kanal 18×126', width_mm: 126, depth_mm: 18,
           length_mm: 2800, pattern: :double_groove,
-          params: { groove_count: 2, groove_width: 6.0, groove_depth: 3.5,
-                    groove_spacing: 30.0 }
+          params: { groove_count: 2, groove_width: 5.0, groove_depth: 3.0,
+                    groove_spacing: 32.0 }
         },
+
+        # — Üçlü V (ribbed_center 3 yiv merkezde) ————————————————
         {
-          code: '18126-45', name: 'U-Kanal 18x126', width_mm: 126, depth_mm: 18,
+          code: '18126-3V', name: 'Üçlü V-Kanal 18×126', width_mm: 126, depth_mm: 18,
+          length_mm: 2800, pattern: :triple_groove,
+          params: { groove_width: 4.0, groove_depth: 2.5, groove_spacing: 14.0 }
+        },
+
+        # — U-Kanal —————————————————————————————————————————————
+        {
+          code: '18126-45', name: 'U-Kanal 18×126', width_mm: 126, depth_mm: 18,
           length_mm: 2800, pattern: :u_groove,
-          params: { groove_count: 1, groove_width: 14.0, groove_depth: 5.0 }
+          params: { groove_count: 1, groove_width: 12.0, groove_depth: 4.0 }
         },
+
+        # — Çoklu Yiv (ribbed) ————————————————————————————————————
         {
-          code: '18126-47', name: 'Çoklu Yiv 18x126', width_mm: 126, depth_mm: 18,
+          code: '18126-47', name: 'Çoklu Yiv 18×126', width_mm: 126, depth_mm: 18,
           length_mm: 2800, pattern: :ribbed,
-          params: { rib_count: 8, rib_depth: 3.0 }
+          params: { rib_count: 8, rib_depth: 2.0 }
         },
+
+        # — Step (kademeli) ——————————————————————————————————————
         {
-          code: '08215-01', name: 'Geniş Düz 8x215', width_mm: 215, depth_mm: 8,
-          length_mm: 2800, pattern: :flat, params: {}
+          code: '22126-45', name: 'Derin Kademeli 22×126', width_mm: 126, depth_mm: 22,
+          length_mm: 2800, pattern: :step,
+          params: { step_count: 2, step_depth: 5.0 }
         },
+
+        # — Yarım Yuvarlak / Reeded ——————————————————————————————
         {
-          code: '08215-12', name: 'Yarım Yuvarlak 8x215', width_mm: 215, depth_mm: 12,
+          code: '08215-12', name: 'Yarım Yuvarlak 8×215', width_mm: 215, depth_mm: 12,
           length_mm: 2800, pattern: :half_round,
           params: { radius: 6.0 }
         },
         {
-          code: '22126-45', name: 'Derin Yiv 22x126', width_mm: 126, depth_mm: 22,
-          length_mm: 2800, pattern: :step,
-          params: { step_count: 2, step_depth: 6.0 }
-        },
-        {
-          code: '08160-01', name: 'Reeded 8x160', width_mm: 160, depth_mm: 12,
+          code: '08160-01', name: 'Reeded 8×160', width_mm: 160, depth_mm: 12,
           length_mm: 2800, pattern: :reeded,
           params: { rib_count: 14, rib_radius: 4.0 }
         },
+
+        # — Tongue & Groove (geçmeli) ———————————————————————————
         {
-          code: '3030-08', name: 'Lamel 30x30', width_mm: 30, depth_mm: 30,
+          code: '18120-TG', name: 'Geçmeli Lambri 18×120', width_mm: 120, depth_mm: 18,
+          length_mm: 2800, pattern: :tongue_groove,
+          params: { tongue_width: 4.0, tongue_height: 6.0 }
+        },
+
+        # — Lamel (kare kesit) ————————————————————————————————————
+        {
+          code: '3030-08', name: 'Lamel 30×30', width_mm: 30, depth_mm: 30,
           length_mm: 2800, pattern: :louver,
           params: {}
         }
@@ -267,6 +376,20 @@ module CAWorks
         when :reeded
           { rib_count:  (h[:rib_count]  || 14).to_i,
             rib_radius: (h[:rib_radius] || 4.0).to_f }
+        when :chamfered_edge
+          out = { chamfer: (h[:chamfer] || 1.5).to_f }
+          if h[:groove_width].to_f > 0 && h[:groove_depth].to_f > 0
+            out[:groove_width] = h[:groove_width].to_f
+            out[:groove_depth] = h[:groove_depth].to_f
+          end
+          out
+        when :tongue_groove
+          { tongue_width:  (h[:tongue_width]  || 4.0).to_f,
+            tongue_height: (h[:tongue_height] || 6.0).to_f }
+        when :triple_groove
+          { groove_width:   (h[:groove_width]   || 4.0).to_f,
+            groove_depth:   (h[:groove_depth]   || 2.5).to_f,
+            groove_spacing: (h[:groove_spacing] || 14.0).to_f }
         else
           {}
         end
@@ -281,15 +404,18 @@ module CAWorks
         w = profile[:width_mm].mm
         d = profile[:depth_mm].mm
         case profile[:pattern]
-        when :flat          then flat_points(w, d)
-        when :v_groove      then v_groove_points(w, d, profile[:params])
-        when :double_groove then double_groove_points(w, d, profile[:params])
-        when :u_groove      then u_groove_points(w, d, profile[:params])
-        when :ribbed        then ribbed_points(w, d, profile[:params])
-        when :half_round    then half_round_points(w, d, profile[:params])
-        when :step          then step_points(w, d, profile[:params])
-        when :reeded        then reeded_points(w, d, profile[:params])
-        when :louver        then flat_points(w, d)
+        when :flat            then flat_points(w, d)
+        when :v_groove        then v_groove_points(w, d, profile[:params])
+        when :double_groove   then double_groove_points(w, d, profile[:params])
+        when :triple_groove   then triple_groove_points(w, d, profile[:params])
+        when :u_groove        then u_groove_points(w, d, profile[:params])
+        when :ribbed          then ribbed_points(w, d, profile[:params])
+        when :half_round      then half_round_points(w, d, profile[:params])
+        when :step            then step_points(w, d, profile[:params])
+        when :reeded          then reeded_points(w, d, profile[:params])
+        when :chamfered_edge  then chamfered_edge_points(w, d, profile[:params])
+        when :tongue_groove   then tongue_groove_points(w, d, profile[:params])
+        when :louver          then flat_points(w, d)
         else
           flat_points(w, d)
         end
@@ -449,6 +575,77 @@ module CAWorks
         end
         pts << Geom::Point3d.new(0, d, 0)
         pts
+      end
+
+      # Üçlü merkez V-yivi (3 V eşit aralıklı, panel ortasında)
+      def self.triple_groove_points(w, d, p)
+        gw = (p[:groove_width]   || 4.0).mm
+        gd = (p[:groove_depth]   || 2.5).mm
+        sp = (p[:groove_spacing] || 14.0).mm
+        cx = w / 2.0
+        c2 = cx + sp
+        c0 = cx - sp
+        c1 = cx
+        pts = [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d, 0)
+        ]
+        [c2, c1, c0].each do |c|
+          pts << Geom::Point3d.new(c + gw / 2.0, d, 0)
+          pts << Geom::Point3d.new(c, d - gd, 0)
+          pts << Geom::Point3d.new(c - gw / 2.0, d, 0)
+        end
+        pts << Geom::Point3d.new(0, d, 0)
+        pts
+      end
+
+      # Pahlı kenar — panel üst köşeleri 45° pahlı, opsiyonel merkez V yivi.
+      # Komşu paneller yan yana geldiğinde aralarında küçük V çizgisi
+      # oluşur (gerçek lambri görünümü).
+      def self.chamfered_edge_points(w, d, p)
+        c  = (p[:chamfer] || 1.5).mm
+        gw = p[:groove_width].to_f.mm
+        gd = p[:groove_depth].to_f.mm
+        cx = w / 2.0
+        pts = [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w, d - c, 0),
+          Geom::Point3d.new(w - c, d, 0)
+        ]
+        if gw > 0 && gd > 0
+          pts << Geom::Point3d.new(cx + gw / 2.0, d, 0)
+          pts << Geom::Point3d.new(cx, d - gd, 0)
+          pts << Geom::Point3d.new(cx - gw / 2.0, d, 0)
+        end
+        pts << Geom::Point3d.new(c, d, 0)
+        pts << Geom::Point3d.new(0, d - c, 0)
+        pts
+      end
+
+      # Geçmeli (Tongue & Groove): sağ kenarda pim, sol kenarda kanal.
+      # Kesit X aralığı [0, w + tongue_width]; chord-walk panel_w = w
+      # kullanır → komşu paneller pim/kanal birbirine geçer.
+      def self.tongue_groove_points(w, d, p)
+        tw = (p[:tongue_width]  || 4.0).mm
+        th = (p[:tongue_height] || 6.0).mm
+        ty = d / 2.0
+        gd_inset = tw + 0.5.mm    # kanal iç sınırı (sol kenardan içeri)
+        [
+          Geom::Point3d.new(0, 0, 0),
+          Geom::Point3d.new(w, 0, 0),
+          Geom::Point3d.new(w,        ty - th / 2.0, 0),
+          Geom::Point3d.new(w + tw,   ty - th / 2.0, 0),
+          Geom::Point3d.new(w + tw,   ty + th / 2.0, 0),
+          Geom::Point3d.new(w,        ty + th / 2.0, 0),
+          Geom::Point3d.new(w, d, 0),
+          Geom::Point3d.new(0, d, 0),
+          Geom::Point3d.new(0,        ty + th / 2.0, 0),
+          Geom::Point3d.new(gd_inset, ty + th / 2.0, 0),
+          Geom::Point3d.new(gd_inset, ty - th / 2.0, 0),
+          Geom::Point3d.new(0,        ty - th / 2.0, 0)
+        ]
       end
 
     end

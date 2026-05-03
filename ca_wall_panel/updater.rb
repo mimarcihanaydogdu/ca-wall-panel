@@ -120,7 +120,81 @@ module CAWorks
         return unless asset
 
         notes = data['body'].to_s
-        download_and_stage(asset['browser_download_url'], latest_tag, notes)
+        # Kullanıcıya HEMEN bildir; istek üzerine şimdi güncelle, yoksa
+        # arka planda stage et (mevcut davranış).
+        notify_update_available(asset['browser_download_url'], latest_tag, notes)
+      end
+
+      # ---- KULLANICI TARAFINDAN MANUEL KONTROL ------------------
+      # Menüden 'Güncellemeleri Kontrol Et' komutu için.
+      def self.check_now_with_prompt
+        Sketchup.set_status_text('CA-Wall Panel: yeni sürüm aranıyor...')
+        request = Sketchup::Http::Request.new(API_URL, Sketchup::Http::GET)
+        request.headers = {
+          'Accept'     => 'application/vnd.github+json',
+          'User-Agent' => "CAWallPanel/#{CAWallPanel::PLUGIN_VERSION}"
+        }
+        request.start do |req, response|
+          save_state('last_check' => Time.now.to_i)
+
+          if response.status_code != 200
+            UI.messagebox("Sunucudan cevap alınamadı (HTTP #{response.status_code}).")
+            next
+          end
+
+          data = JSON.parse(response.body) rescue nil
+          unless data.is_a?(Hash)
+            UI.messagebox("Sürüm bilgisi okunamadı.")
+            next
+          end
+
+          latest_tag = data['tag_name'].to_s.sub(/^v/, '')
+          if latest_tag.empty? || !newer?(latest_tag, CAWallPanel::PLUGIN_VERSION)
+            UI.messagebox("Güncel sürümdesiniz: v#{CAWallPanel::PLUGIN_VERSION}")
+            next
+          end
+
+          asset = (data['assets'] || []).find do |a|
+            a['name'].to_s.downcase.end_with?('.rbz')
+          end
+          unless asset
+            UI.messagebox("Yeni sürüm v#{latest_tag} bulundu fakat .rbz asset'i yok.")
+            next
+          end
+
+          notify_update_available(asset['browser_download_url'], latest_tag, data['body'].to_s)
+        end
+      rescue StandardError => e
+        UI.messagebox("Güncelleme kontrolü başarısız: #{e.message}")
+      end
+
+      # ---- KULLANICIYA BİLDİRİM ---------------------------------
+      def self.notify_update_available(url, version, notes)
+        Sketchup.set_status_text(
+          "🔔 CA-Wall Panel: yeni sürüm mevcut → v#{version}"
+        )
+
+        snippet = notes.to_s.strip
+        snippet = snippet[0, 320] + '…' if snippet.length > 320
+
+        answer = UI.messagebox(
+          "CA-Wall Panel — Yeni sürüm mevcut\n\n" \
+          "Mevcut: v#{CAWallPanel::PLUGIN_VERSION}\n" \
+          "Yeni  : v#{version}\n\n" \
+          "#{snippet.empty? ? '' : snippet + "\n\n"}" \
+          "Şimdi güncellensin mi?  (Hayır = bir sonraki SketchUp açılışında uygulanır)",
+          MB_YESNO
+        )
+
+        if answer == IDYES
+          update_now!
+        else
+          download_and_stage(url, version, notes)
+        end
+      rescue StandardError => e
+        warn "[CA-Wall Panel Updater] notify hatası: #{e.message}"
+        # Bildirim gösterilemese bile arka planda stage et
+        download_and_stage(url, version, notes) rescue nil
       end
 
       # ---- INDIR + STAGE (arka plan) ----------------------------

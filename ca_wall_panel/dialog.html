@@ -63,6 +63,28 @@
     gap: 8px;
     margin-bottom: 10px;
   }
+  .recents-row {
+    background: #fff5e1; border: 1px solid #f5d76e;
+    border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;
+  }
+  .recents-label {
+    font-size: 10px; color: #6a4f00; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .recents-strip {
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+  }
+  .recent-card {
+    flex: 0 0 90px;
+    background: #fff; border: 1.5px solid #ddd; border-radius: 4px;
+    padding: 4px; cursor: pointer; text-align: center;
+    transition: all 0.1s;
+  }
+  .recent-card:hover { border-color: #f5a623; }
+  .recent-card.active { border-color: #f5a623; background: #fffaf0; }
+  .recent-card svg { width: 100%; height: 32px; display: block; }
+  .recent-card .code { font-size: 10px; font-weight: 600; margin-top: 2px; }
   .card {
     background: #fff; border: 2px solid #ddd; border-radius: 6px;
     padding: 8px; cursor: pointer; text-align: center;
@@ -175,6 +197,11 @@
   <input type="checkbox" id="flip"> <label for="flip">Profili ters çevir (iç/dış yön)</label>
 </div>
 
+<div class="recents-row" id="recentsRow" style="display:none;">
+  <div class="recents-label">Son Kullanılanlar:</div>
+  <div class="recents-strip" id="recentsStrip"></div>
+</div>
+
 <div class="grid" id="profileGrid"></div>
 
 <details class="section" id="customSection">
@@ -231,6 +258,7 @@
 <script>
   let activeCode = null;
   let profiles = [];
+  let recentCodes = [];
   let editing = null;     // { run_token, run_name, profile_code, height_mm, flip }
 
   // ------------------ INIT ------------------
@@ -251,9 +279,40 @@
       activeCode = profiles[0] ? profiles[0].code : null;
     }
     renderGrid();
+    renderRecents();
     updateProfileLenInfo();
     validateHeight();
     updateCustomList();
+  }
+
+  function loadRecents(json) {
+    try {
+      const arr = JSON.parse(json);
+      recentCodes = Array.isArray(arr) ? arr : [];
+    } catch(e) { recentCodes = []; }
+    renderRecents();
+  }
+
+  function renderRecents() {
+    const row = document.getElementById('recentsRow');
+    const strip = document.getElementById('recentsStrip');
+    if (!row || !strip) return;
+    const items = recentCodes
+      .map(code => profiles.find(p => p.code === code))
+      .filter(Boolean)
+      .slice(0, 6);
+    if (items.length === 0) { row.style.display = 'none'; return; }
+    row.style.display = 'block';
+    strip.innerHTML = '';
+    items.forEach(p => {
+      const c = document.createElement('div');
+      c.className = 'recent-card' + (p.code === activeCode ? ' active' : '');
+      c.onclick = () => selectProfile(p.code);
+      let svg;
+      try { svg = profileSVG(p); } catch(_) { svg = ''; }
+      c.innerHTML = `${svg}<div class="code">${escHtml(p.code)}</div>`;
+      strip.appendChild(c);
+    });
   }
 
   function updateCustomList() {
@@ -350,8 +409,6 @@
   function profileSVG(p) {
     const W = 100, H = 40;
     const w = p.width_mm, d = p.depth_mm;
-    const sx = (W - 4) / w;
-    const sy = Math.min((H - 8) / Math.max(d, 8), sx * 1.5);
     let pts;
     switch(p.pattern) {
       case 'flat': pts = [[0,0],[w,0],[w,d],[0,d]]; break;
@@ -440,12 +497,58 @@
         pts.push([0, d]);
         break;
       }
+      case 'triple_groove': {
+        const gw = (p.params && p.params.groove_width)   || 4;
+        const gd = (p.params && p.params.groove_depth)   || 2.5;
+        const sp = (p.params && p.params.groove_spacing) || 14;
+        const cx = w/2;
+        pts = [[0,0],[w,0],[w,d]];
+        [cx+sp, cx, cx-sp].forEach(c => {
+          pts.push([c+gw/2, d]); pts.push([c, d-gd]); pts.push([c-gw/2, d]);
+        });
+        pts.push([0, d]);
+        break;
+      }
+      case 'chamfered_edge': {
+        const c  = (p.params && p.params.chamfer) || 1.5;
+        const gw = (p.params && p.params.groove_width) || 0;
+        const gd = (p.params && p.params.groove_depth) || 0;
+        const cx = w/2;
+        pts = [[0,0],[w,0],[w,d-c],[w-c,d]];
+        if (gw > 0 && gd > 0) {
+          pts.push([cx+gw/2,d]); pts.push([cx,d-gd]); pts.push([cx-gw/2,d]);
+        }
+        pts.push([c,d]); pts.push([0,d-c]);
+        break;
+      }
+      case 'tongue_groove': {
+        const tw = (p.params && p.params.tongue_width)  || 4;
+        const th = (p.params && p.params.tongue_height) || 6;
+        const ty = d/2;
+        const ginset = tw + 0.5;
+        pts = [
+          [0,0],[w,0],
+          [w, ty-th/2],[w+tw, ty-th/2],[w+tw, ty+th/2],[w, ty+th/2],
+          [w, d],[0, d],
+          [0, ty+th/2],[ginset, ty+th/2],[ginset, ty-th/2],[0, ty-th/2]
+        ];
+        break;
+      }
       default: pts = [[0,0],[w,0],[w,d],[0,d]];
     }
+    // Genel ölçek: tongue_groove gibi panel dışına çıkan kesitlerde de uyum.
+    const xMin = Math.min(...pts.map(pp => pp[0]));
+    const xMax = Math.max(...pts.map(pp => pp[0]));
+    const yMin = Math.min(...pts.map(pp => pp[1]));
+    const yMax = Math.max(...pts.map(pp => pp[1]));
+    const span_x = Math.max(xMax - xMin, 1);
+    const span_y = Math.max(yMax - yMin, 1);
+    const sxA = (W - 4) / span_x;
+    const syA = Math.min((H - 8) / Math.max(span_y, 8), sxA * 1.5);
     const margin = 2;
     const path = pts.map((pt, i) => {
-      const x = margin + pt[0]*sx;
-      const y = H - margin - pt[1]*sy;
+      const x = margin + (pt[0] - xMin) * sxA;
+      const y = H - margin - (pt[1] - yMin) * syA;
       return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
     }).join(' ') + ' Z';
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
@@ -455,7 +558,10 @@
 
   function selectProfile(code) {
     activeCode = code;
+    // Yerel recents listesini de güncelle (Ruby tarafı kalıcı saklamayı yapar)
+    recentCodes = [code, ...recentCodes.filter(c => c !== code)].slice(0, 6);
     renderGrid();
+    renderRecents();
     updateProfileLenInfo();
     validateHeight();
     sketchup.set_active_profile(code);

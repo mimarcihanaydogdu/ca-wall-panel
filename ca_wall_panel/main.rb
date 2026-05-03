@@ -68,6 +68,13 @@ module CAWorks
       @profile_dialog.execute_script("loadProfiles(#{json.inspect});")
       path = Profiles.custom_file rescue ''
       @profile_dialog.execute_script("setStoragePath(#{path.to_s.inspect});")
+      send_recents_to_dialog
+    end
+
+    def self.send_recents_to_dialog
+      return unless @profile_dialog
+      json = Profiles.recent_codes.to_json
+      @profile_dialog.execute_script("loadRecents(#{json.inspect});")
     end
 
     def self.profiles_for_js
@@ -126,11 +133,13 @@ module CAWorks
 
       @profile_dialog.add_action_callback('set_active_profile') do |_ctx, code|
         ApplyTool.active_profile_code = code
+        Profiles.add_recent(code)
       end
 
       @profile_dialog.add_action_callback('apply_profile') do |_ctx, code, flip, height_mm|
         ApplyTool.active_profile_code = code
         ApplyTool.flip_orientation    = flip
+        Profiles.add_recent(code)
         ApplyTool.run(height_mm.to_f)
       end
 
@@ -308,32 +317,48 @@ module CAWorks
       show_profile_dialog(edit_run: run)
     end
 
+    # Hızlı Uygula: diyalog açmadan, son kullanılan profil + yükseklik
+    # ile seçili çizgiye lambri uygular.
+    def self.quick_apply
+      sel = Sketchup.active_model.selection.to_a.select { |e| e.is_a?(Sketchup::Edge) }
+      if sel.empty?
+        UI.messagebox("Hızlı Uygula: önce çizgi/yay seçin.\n\n" \
+                      "Profil: #{ApplyTool.active_profile_code}\n" \
+                      "Yükseklik: #{ApplyTool.last_height_mm.round} mm")
+        return
+      end
+      Profiles.add_recent(ApplyTool.active_profile_code) if ApplyTool.active_profile_code
+      ApplyTool.run(ApplyTool.last_height_mm)
+    end
+
     # ------------------------------------------------------------
     #  MENÜ + TOOLBAR
     # ------------------------------------------------------------
     unless file_loaded?(__FILE__)
       menu = UI.menu('Plugins').add_submenu('CA-Wall Panel')
       menu.add_item('Profil Seç ve Uygula')  { show_profile_dialog }
+      menu.add_item('Hızlı Uygula (Son Ayarlar)') { quick_apply }
       menu.add_item('Kalem ile Çiz')         { start_draw_tool }
       menu.add_item("Lambri'yi Düzenle")     { edit_selected_run }
+      menu.add_separator
       menu.add_item('Metraj')                { Metraj.show }
       menu.add_item('Renklendir / Doku')     { show_color_dialog }
       menu.add_item('Yalnız Lambri Modu')    { IsolateTool.toggle }
       menu.add_separator
-      menu.add_item('Güncelle Plugini')      { Updater.update_now! }
+      menu.add_item('Güncellemeleri Kontrol Et') { Updater.check_now_with_prompt }
+      menu.add_item('Şimdi Güncelle (Bekleyen)') { Updater.update_now! }
       menu.add_item('Hakkında') do
         UI.messagebox(
           "CA-Wall Panel v#{PLUGIN_VERSION}\n\n" \
           "ca//works · Cihan Aydoğdu Mimarlık\n\n" \
-          "Yenilikler (0.4.0):\n" \
-          " · Renk uygulama düzeltildi (Component Instance bazında).\n" \
-          " · Lambri Hattı 'Lambri' katmanına otomatik atanır.\n" \
-          " · Yalnız Lambri Modu: tek tıkla diğer her şeyi gizle/göster.\n" \
-          " · Kalem aracı: kırmızı/yeşil/mavi eksen-snap + VCB'den yükseklik girme.\n" \
-          " · Metraj: renk/materyal sütunu + CSV (Excel) export.\n" \
-          " · Fire hesabı sadeleştirildi (stok × parça − panel × yükseklik).\n" \
-          " · PNG/JPG ile render-ready doku yükleme + son kullanılan dokular listesi.\n" \
-          " · Özel profil ekleme akışı dayanıklılaştırıldı (hata = temiz mesaj)."
+          "Yenilikler (0.5.0):\n" \
+          " · Toolbar: yalnızca 2 ikon (CA-Wall Panel + Yalnız Lambri Modu).\n" \
+          " · Tüm diğer komutlar ve güncelleme menü altına alındı.\n" \
+          " · Yeni sürüm bulunduğunda otomatik bildirim (modal Y/N).\n" \
+          " · Kesit havuzu genişletildi: 18 farklı profil; yeni 'Pahlı Düz',\n" \
+          "   'Pahlı V-Kanal', 'Üçlü V', 'Geçmeli (T&G)' kesitleri eklendi.\n" \
+          " · Diyalogda 'Son Kullanılanlar' şeridi (kalıcı).\n" \
+          " · Hızlı Uygula: diyalog açmadan son ayarla seçili çizgiye uygular."
         )
       end
 
@@ -341,56 +366,35 @@ module CAWorks
 
       icon_dir = File.join(File.dirname(__FILE__), 'icons')
 
-      cmd1 = UI::Command.new('CA-Wall Panel') { show_profile_dialog }
-      cmd1.tooltip          = 'CA-Wall Panel — Profil seç ve uygula'
-      cmd1.status_bar_text  = 'Çizgi/yay/curve seçin, panelleri yan yana dizin'
-      icon1 = File.join(icon_dir, 'panel.svg')
-      if File.exist?(icon1)
-        cmd1.large_icon = icon1
-        cmd1.small_icon = icon1
+      cmd_main = UI::Command.new('CA-Wall Panel') { show_profile_dialog }
+      cmd_main.tooltip          = 'CA-Wall Panel — Profil/yükseklik diyaloğu'
+      cmd_main.status_bar_text  = 'Profil seç, yükseklik gir; çizgi/yay'\
+                                  ' veya Çiz aracıyla uygula'
+      icon_main = File.join(icon_dir, 'panel.svg')
+      if File.exist?(icon_main)
+        cmd_main.large_icon = icon_main
+        cmd_main.small_icon = icon_main
       end
-      tb.add_item(cmd1)
-
-      cmd_draw = UI::Command.new('Kalem ile Çiz') { start_draw_tool }
-      cmd_draw.tooltip         = 'Kalem aracı — eksen-snap + VCB ile yükseklik'
-      cmd_draw.status_bar_text = 'Sol tık: nokta · Enter/Sağ tık: bitir · Esc: iptal · VCB: yükseklik'
-      tb.add_item(cmd_draw)
-
-      cmd_edit = UI::Command.new("Lambri'yi Düzenle") { edit_selected_run }
-      cmd_edit.tooltip         = 'Seçili Lambri Hattı için profil/yükseklik değiştir'
-      cmd_edit.status_bar_text = 'Lambri Hattı seçip Düzenle ile yeniden üret'
-      tb.add_item(cmd_edit)
-
-      cmd_metraj = UI::Command.new('Metraj') { Metraj.show }
-      cmd_metraj.tooltip         = 'Modeldeki Lambri Hatlarının metraj raporu (PDF + CSV)'
-      cmd_metraj.status_bar_text = 'Profil + renk bazlı panel/alan/parça/fire'
-      tb.add_item(cmd_metraj)
+      tb.add_item(cmd_main)
 
       cmd_iso = UI::Command.new('Yalnız Lambri Modu') { IsolateTool.toggle }
-      cmd_iso.tooltip         = 'Tek tıkla Lambri dışındakileri gizle / geri aç'
-      cmd_iso.status_bar_text = 'Plan/kesit incelemesi için izolasyon'
+      cmd_iso.tooltip         = 'Lambri dışındaki üst-seviye nesneleri'\
+                                ' geçici olarak gizle / geri aç'
+      cmd_iso.status_bar_text = 'Plan/kesit incelemesi için izolasyon (toggle)'
       cmd_iso.set_validation_proc { IsolateTool.active? ? MF_CHECKED : MF_UNCHECKED }
+      icon_iso = File.join(icon_dir, 'isolate.svg')
+      if File.exist?(icon_iso)
+        cmd_iso.large_icon = icon_iso
+        cmd_iso.small_icon = icon_iso
+      else
+        # Fallback: color iconu kullan, en azından buton görünür
+        icon_color = File.join(icon_dir, 'color.svg')
+        if File.exist?(icon_color)
+          cmd_iso.large_icon = icon_color
+          cmd_iso.small_icon = icon_color
+        end
+      end
       tb.add_item(cmd_iso)
-
-      cmd2 = UI::Command.new('Renklendir / Doku') { show_color_dialog }
-      cmd2.tooltip         = 'Renk + PNG/JPG render-ready doku uygula'
-      cmd2.status_bar_text = 'Lambri Hattı seçip renk veya texture uygulayın'
-      icon2 = File.join(icon_dir, 'color.svg')
-      if File.exist?(icon2)
-        cmd2.large_icon = icon2
-        cmd2.small_icon = icon2
-      end
-      tb.add_item(cmd2)
-
-      cmd3 = UI::Command.new('Güncelle Plugini') { Updater.update_now! }
-      cmd3.tooltip          = 'CA-Wall Panel — Güncelle (yeniden başlatmadan)'
-      cmd3.status_bar_text  = 'Yeni sürüm varsa anında indirir ve yükler'
-      icon3 = File.join(icon_dir, 'update.svg')
-      if File.exist?(icon3)
-        cmd3.large_icon = icon3
-        cmd3.small_icon = icon3
-      end
-      tb.add_item(cmd3)
 
       tb.show
 
